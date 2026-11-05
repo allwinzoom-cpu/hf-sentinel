@@ -28,7 +28,7 @@ FROM runtime AS test
 USER root
 COPY requirements/dev.lock /tmp/dev.lock
 RUN pip install --require-hashes --only-binary=:all: -r /tmp/dev.lock && rm /tmp/dev.lock
-COPY --chown=root:root pyproject.toml test_plan.py hf-llm-security-scanner-project-plan.md /app/
+COPY --chown=root:root pyproject.toml test_plan.py hf-llm-security-scanner-project-plan.md action.yml /app/
 COPY --chown=root:root tests/ /app/tests/
 COPY --chown=root:root calibration/ /app/calibration/
 COPY --chown=root:root engines/ /app/engines/

@@ -1,0 +1,133 @@
+name: "HF-Sentinel LLM security scan"
+description: >-
+  Run HF-Sentinel against an authorized LLM target, upload the SARIF report to GitHub code scanning, and fail the
+  job when a confirmed finding is at or above a chosen severity (a PR security gate).
+author: "HF-Sentinel"
+branding:
+  icon: "shield"
+  color: "purple"
+
+# Composite action wrapping the `hfsentinel` CLI. The scan is fail-closed: it refuses to send any traffic without a
+# signed scope file authorizing the target (OpenSSH Ed25519 signature, verified before the YAML is parsed), so `scope`
+# and `signers` are required. The job fails on a finding at or above `fail-on` via the CLI's exit code 10, but the SARIF
+# is uploaded first so findings always reach code scanning even when the gate trips.
+inputs:
+  target:
+    description: "Target URI, e.g. openai+https://host/v1#model or hf-provider://org/model."
+    required: true
+  scope:
+    description: "Path to the signed scope file (scope.yaml) authorizing this target. Its .sig must sit beside it."
+    required: true
+  signers:
+    description: "Path to the OpenSSH allowed_signers file trusted to have signed the scope."
+    required: true
+  fail-on:
+    description: "Fail the job on a confirmed finding at or above this severity: critical | high | medium."
+    required: false
+    default: "high"
+  budget-usd:
+    description: "Target spend cap in USD (the CLI enforces <= 20)."
+    required: false
+    default: "20"
+  budget-judge-usd:
+    description: "Judge spend cap in USD (the CLI enforces <= 25); 0 disables judge-scored engine candidates."
+    required: false
+    default: "0"
+  max-minutes:
+    description: "Optional wall-clock cap for the scan."
+    required: false
+    default: ""
+  max-requests:
+    description: "Optional request cap for the scan."
+    required: false
+    default: ""
+  config:
+    description: "Optional path to a sentinel config file (its values are overridden by the inputs above)."
+    required: false
+    default: ""
+  output-dir:
+    description: "Directory for the written reports (SARIF + Markdown + JSON)."
+    required: false
+    default: "hfsentinel-report"
+  upload-sarif:
+    description: "Upload the SARIF report to GitHub code scanning (needs security-events: write)."
+    required: false
+    default: "true"
+  python-version:
+    description: "Python version used to install and run HF-Sentinel."
+    required: false
+    default: "3.12"
+  hf-token:
+    description: "Optional Hugging Face token (pass a secret) for Hub-resolved targets. Never printed; used only as HF_TOKEN."
+    required: false
+    default: ""
+
+outputs:
+  exit-code:
+    description: "The hfsentinel exit code (0 ok, 10 a confirmed finding met fail-on, others per the CLI)."
+    value: ${{ steps.scan.outputs.exit-code }}
+  report-dir:
+    description: "Directory containing the written reports."
+    value: ${{ inputs.output-dir }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install HF-Sentinel
+      shell: bash
+      run: pip install --no-input "${{ github.action_path }}"
+
+    - name: Run scan
+      id: scan
+      shell: bash
+      env:
+        # Passed through only as HF_TOKEN; never echoed. Empty when no Hub target is used.
+        HF_TOKEN: ${{ inputs.hf-token }}
+      run: |
+        set -uo pipefail
+        args=(scan "${{ inputs.target }}"
+          --scope "${{ inputs.scope }}" --signers "${{ inputs.signers }}"
+          --format sarif,md,json
+          --fail-on "${{ inputs.fail-on }}"
+          --budget-usd "${{ inputs.budget-usd }}"
+          --budget-judge-usd "${{ inputs.budget-judge-usd }}"
+          --out "${{ inputs.output-dir }}")
+        [ -n "${{ inputs.max-minutes }}" ] && args+=(--max-minutes "${{ inputs.max-minutes }}")
+        [ -n "${{ inputs.max-requests }}" ] && args+=(--max-requests "${{ inputs.max-requests }}")
+        [ -n "${{ inputs.config }}" ] && args+=(--config "${{ inputs.config }}")
+        # Do not let a non-zero exit (e.g. 10 = gate tripped) abort before SARIF upload; capture and enforce later.
+        set +e
+        hfsentinel "${args[@]}"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if ls "${{ inputs.output-dir }}"/*.sarif >/dev/null 2>&1; then
+          echo "sarif=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "sarif=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload SARIF to code scanning
+      if: ${{ always() && inputs.upload-sarif == 'true' && steps.scan.outputs.sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+      with:
+        sarif_file: ${{ inputs.output-dir }}
+
+    - name: Enforce fail-on gate
+      shell: bash
+      run: |
+        code="${{ steps.scan.outputs.exit-code }}"
+        if [ "$code" = "10" ]; then
+          echo "::error title=HF-Sentinel::Confirmed finding at or above '${{ inputs.fail-on }}' severity."
+          exit 1
+        fi
+        if [ "$code" != "0" ]; then
+          echo "::error title=HF-Sentinel::Scan did not complete (hfsentinel exit $code)."
+          exit "$code"
+        fi
+        echo "HF-Sentinel: no confirmed finding at or above '${{ inputs.fail-on }}'."

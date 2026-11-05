@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 36/71 tasks ticked (50.7%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 37/71 tasks ticked (52.1%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -71,6 +71,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 - P2 · Hosted-mode SSRF guard (16.8) — `hfsentinel/sandbox/ssrf.py`: `guard_host` fails closed unless every resolved address is globally routable (blocks private/loopback/link-local/metadata + DNS rebinding); `guard_url` also requires https; `guarded_get` re-checks every redirect hop (injectable resolver → DNS-free tests). Applied only in hosted mode (`HFS_HOSTED`): `scan`/`diff` guard the resolved target endpoint + `--sink-url` before any traffic, refusing (exit 3) on a violation; local loopback runs stay unguarded. Verified amd64+arm64: ruff, pytest (+6 `tests/test_ssrf.py`: non-global literals, resolution+rebinding, https-only/metadata/file://, redirect-hop re-checks, HFS_HOSTED gate, hosted scan refusing loopback), plan harness ALL PASS. Fully complete — no caveats.
 
 - P1 · Adopt/borrow/reject decisions — `docs/adr/0001-tooling.md`: a verdict for every tool (grounded in versions.json + §16.21/§16.22/§4.6). Adopt-as-engine: garak→probe-suite, PyRIT→orchestrator, promptmap→extractor, AgentDojo→agent-bench (Phase 4). Adopt-for-categories: strong_reject→rubric-judge, PurpleLlama→guard-suite (scorers). Borrow/deferred: DeepTeam→crosscheck. Borrow-data: HarmBench (not a runtime judge), AdvBench/CyberSecEval. Reject: jailbreakbench package (data pinned instead). Each row cites its owned capability (one owner per capability). amd64 gate: ruff, 806/806 pytest, plan harness ALL PASS (docs-only; arch-independent). Fully complete.
+
+- P0 · Repo + CI + policy — verification tick: package skeleton (pyproject + __init__/__main__), `.pre-commit-config.yaml` (ruff + gitleaks + detect-private-key + hygiene hooks), `.github/workflows/ci.yml` building the test image and running ruff + pytest + plan harness in a hardened no-network container on every push/PR, and `SECURITY.md` with reporting + responsible-disclosure + ethics. Done-when met: CI green on every main merge (PRs #1–#10) and each PR. No new code — honest close-out of complete foundational work. amd64 gate: ruff, 806/806 pytest, plan harness ALL PASS.
 
 ## In progress
 - Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint (needs a verified download) to light up the routing; a judge-scored engine technique emitting candidates (harmful-goal jailbreak) to light up the judge path; full D-018 always-on engine service; HF Jobs target runner (D-004); Wrap garak; distillation. Awaiting direction.

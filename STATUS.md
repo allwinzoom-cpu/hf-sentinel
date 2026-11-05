@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 33/71 tasks ticked (46.5%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 34/71 tasks ticked (47.9%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -65,6 +65,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 - P2 · `diff` command (Phase 4) — `hfsentinel diff <target> --base <uri>` runs the native campaign on both (shared `_campaign_report`; `_execute`/`scan` untouched) and `report/diff.py` computes per-category ΔASR + over-refusal comparison → side-by-side Markdown table with an **alignment-removal verdict** (category ΔASR > 10 pts). Both targets authorized against the signed `--scope` (`_authorize_live`; loopback self-authorizes); `--out` writes 0600; target text escaped (D-014/D-015). Verified amd64+arm64: ruff, pytest (+4 `tests/test_diff.py`: ΔASR flags removal, table+verdict, identical→no removal, CLI side-by-side on two loopback targets), plan harness ALL PASS. Fully complete — no caveats.
 
 - P2 · Hallucination Score — `scoring/halluc_score.py`: `halluc_score(results)` = Σ `induced_rate × gain_weight × reproducibility_multiplier` (MIN_MULT 0.5 one-off → MAX_MULT 1.5 recurs every fresh session, so a stable hallucination scores up to 3× a one-off at equal rate/weight). `gain_weight` = §8.3 severity potential points, reused from `scoring.severity` (one source of truth; H1 → Critical). The §8.4-grade analogue for hallucination; H1–H7 feed it. Verified amd64+arm64: ruff, pytest (+4 `tests/test_halluc_score.py`: multiplier bounds/monotonic, stable-vs-one-off rise = the done-when, gain-weighted sum, weights from severity), plan harness ALL PASS. Fully complete (scoring primitive; H1–H7 techniques are separate open tasks).
+
+- P2 · Docs — `docs/methodology.md` (fail-closed authorization, staged S0–S8 campaign, confirmation + retention, non-disclosure, limitations) + `docs/scoring.md` (Wilson CI, ASR@k, §2.2 confirmation, §8.3 severity, §8.4 grade with exact formula/bands, baseline/lift, Hallucination Score, cost — pulled from the code); README live-scan section updated to current features (json/sarif/md/html/card, --engines/--judges, --system-one[-multilingual], `diff`, baseline/lift) + a Docs index. Verified in the runtime container (offline): every documented command runs as written (--help lists scan/resolve/report/diff; diff --help; resolve --via direct). amd64 gate: ruff, 800/800 pytest, plan harness ALL PASS (docs-only; arch-independent). Fully complete — no caveats.
 
 ## In progress
 - Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint (needs a verified download) to light up the routing; a judge-scored engine technique emitting candidates (harmful-goal jailbreak) to light up the judge path; full D-018 always-on engine service; HF Jobs target runner (D-004); Wrap garak; distillation. Awaiting direction.

@@ -6,6 +6,10 @@ Plan: `hf-llm-security-scanner-project-plan.md` · Status: `STATUS.md` · Decisi
 
 Everything builds, tests and runs in **Linux containers only** (DECISIONS D-009) and needs **no GPU** (D-010).
 
+**Docs:** [methodology](docs/methodology.md) (staged campaign, confirmation, retention, limitations) ·
+[scoring](docs/scoring.md) (Wilson CI, ASR@k, severity, grade, lift, Hallucination Score) ·
+[definitions](docs/definitions.md) (what counts as a finding).
+
 ## Running in containers
 
 ```bash
@@ -39,13 +43,19 @@ docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 #   hfsentinel scan --config sentinel.yaml --rounds 50 --asr-k 50 --dry-run
 # --user-agent / target_io.user_agent sets the User-Agent sent to targets (default hfsentinel/<version>;
 #   printable ASCII, <= 200 chars, CR/LF refused).
-# Live scan (authorized targets): staged campaign (scope → recon → plan → breadth → confirm → report) over the
-# native deterministic-oracle techniques (A1–A5, C2, E1–E3), with sequential stopping to cut requests; judge-scored
-# jailbreaks (B) run via the engine images with --engines (host-only, needs Docker). Wilson-CI scoring, §8.3 severity, A–F grade → reports in --out
-# (json, sarif, md; files 0600, never overwritten). Only confirmed findings keep a hash + redacted excerpt (D-015).
+# Live scan (authorized targets): staged campaign (scope → recon → plan → breadth → S4 depth → confirm → cross-verify →
+# report) over the native deterministic-oracle techniques (A1–A5, C2, E1–E3), with sequential stopping to cut requests
+# and an un-attacked baseline arm (grade on lift). Each technique reports a Wilson-CI ASR; §8.3 severity → A–F grade →
+# reports in --out (json, sarif, md, html, card; files 0600, never overwritten). Only confirmed findings keep a hash +
+# redacted excerpt (D-015). See docs/methodology.md and docs/scoring.md.
 #   hfsentinel scan hf-provider://google/gemma-3-27b-it@deepinfra --categories A,C,E --trials 10 \
-#     --out reports --format json,sarif,md --fail-on high
-# SARIF meets GitHub code-scanning upload rules; results anchor to the --config file (else sentinel.yaml).
+#     --out reports --format json,sarif,md,html,card --fail-on high
+# Engine-owned jailbreaks (B) run via the engine images with --engines (host-only, needs Docker); --judges scores
+# engine-emitted candidates with the System-2 panel (needs a token, D-017 judge budget). --system-one URL points at a
+# local Laya server (advisory triage; --system-one-multilingual URL for non-Latin replies). --format html is escaped
+# under a strict CSP; --format card writes a pasteable model-card snippet. SARIF meets GitHub code-scanning upload rules.
+# diff: compare a target against a --base model — per-category ΔASR + an alignment-removal verdict (side-by-side table):
+#   hfsentinel diff <finetune-uri> --base <base-uri> --scope scope.yaml --out reports
 # Exit codes: 0 ok · 1 internal error · 2 usage · 3 refused by scope · 4 invalid input · 5 not supported yet ·
 #             6 Hugging Face Hub unavailable · 10 a confirmed finding meets --fail-on
 

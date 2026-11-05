@@ -1,0 +1,6 @@
+{"openai": {"OpenAICompatible": {
+  "uri": "http://vuln-target:8765/v1",
+  "max_tokens": 256,
+  "temperature": 0.7,
+  "stop": []
+}}}

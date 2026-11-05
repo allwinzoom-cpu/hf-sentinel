@@ -1,0 +1,9 @@
+{
+ "calibrated": true,
+ "threshold": 0.55,
+ "recall": 0.9909,
+ "judge_calls_saved": 0.3211,
+ "fraction_sent": 0.7933,
+ "reason": "lowest threshold meeting the recall target with the most savings",
+ "held_out_recall": 0.9636
+}

@@ -1,0 +1,118 @@
+{
+  "_comment": "Engine pins (plan 16.11, DECISIONS D-009). Single source of truth for locks, images, smoke checks and report tool_versions. Verified 2026-11-02: PyPI owner/repo match for every pypi entry; git tarball sha256 stable across two downloads. jailbreakbench package dropped 2026-11-02 (unmaintained since 2024-06, imports a removed litellm module); its dataset is pinned in engines/datasets.json.",
+  "python_images": {
+    "3.12": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337"
+  },
+  "engines": {
+    "garak": {
+      "alias": "probe-suite",
+      "python": "3.12",
+      "torch": "cpu",
+      "source": "pypi",
+      "package": "garak",
+      "version": "0.17.1",
+      "repo": "NVIDIA/garak",
+      "sdist_allow": {
+        "ecoji": "pure-Python, no wheels published (encoding probes)",
+        "langdetect": "pure-Python, no wheels published"
+      },
+      "smoke": [
+        "python",
+        "-m",
+        "garak",
+        "--version"
+      ]
+    },
+    "pyrit": {
+      "alias": "orchestrator",
+      "python": "3.12",
+      "source": "pypi",
+      "package": "pyrit",
+      "version": "1.1.0",
+      "repo": "microsoft/PyRIT",
+      "sdist_allow": {
+        "ecoji": "pure-Python, no wheels published (converters)"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "platform_note": "base2048==0.1.3 (Rust ext) ships no linux/aarch64 cp312 wheel; arm64 needs a Rust toolchain in-image — deferred until upstream publishes one",
+      "smoke": [
+        "python",
+        "-c",
+        "import importlib.metadata as m, pyrit.executor.attack; print('pyrit', m.version('pyrit'))"
+      ]
+    },
+    "deepteam": {
+      "alias": "crosscheck",
+      "python": "3.12",
+      "source": "pypi",
+      "package": "deepteam",
+      "version": "1.0.10",
+      "repo": "confident-ai/deepteam",
+      "smoke": [
+        "python",
+        "-c",
+        "import importlib.metadata as m, deepteam; print('deepteam', m.version('deepteam'))"
+      ]
+    },
+    "promptmap": {
+      "alias": "extractor",
+      "python": "3.12",
+      "source": "git",
+      "kind": "script",
+      "repo": "utkusen/promptmap",
+      "commit": "432e072ae654788ad5b30172d42f3b1bcbda21cf",
+      "sha256": "6ae6b3e6872b55a2b38b42b0b67918f3f1ae3e13cc5c1e9c19288ac52e3f7e50",
+      "smoke": [
+        "python",
+        "/opt/promptmap/promptmap2.py",
+        "--help"
+      ]
+    },
+    "strong_reject": {
+      "alias": "rubric-judge",
+      "python": "3.12",
+      "torch": "cpu",
+      "source": "git",
+      "kind": "package",
+      "repo": "dsbowen/strong_reject",
+      "commit": "7a551d5b440ec7b75d4f6f5bb7c1719965b76b47",
+      "sha256": "19ac0aa33c5ee1687effca9d621015836eda390efd1e6d61eec6b230b84e2c07",
+      "smoke": [
+        "python",
+        "-c",
+        "import strong_reject, strong_reject.evaluate; print('strong_reject ok')"
+      ]
+    },
+    "agentdojo": {
+      "alias": "agent-bench",
+      "python": "3.12",
+      "source": "pypi",
+      "package": "agentdojo",
+      "version": "0.1.35",
+      "repo": "ethz-spylab/agentdojo",
+      "smoke": [
+        "python",
+        "-c",
+        "import importlib.metadata as m, agentdojo; print('agentdojo', m.version('agentdojo'))"
+      ]
+    },
+    "purplellama": {
+      "alias": "guard-suite",
+      "python": "3.12",
+      "torch": "cpu",
+      "source": "pypi",
+      "package": "llamafirewall",
+      "version": "1.0.3",
+      "repo": "meta-llama/PurpleLlama",
+      "smoke": [
+        "python",
+        "-c",
+        "import importlib.metadata as m, llamafirewall, codeshield; print('llamafirewall', m.version('llamafirewall'), 'codeshield', m.version('codeshield'))"
+      ],
+      "build_warmup": "import codeshield.insecure_code_detector.oss",
+      "build_warmup_reason": "CodeShield symlinks semgrep-core -> osemgrep inside site-packages on first import; doing it at build keeps the runtime root filesystem read-only"
+    }
+  }
+}

@@ -1,0 +1,166 @@
+{
+ "dataset": {
+  "name": "judge-comparison",
+  "sha256": "dacaf76a1057785f11b0fc6aa07b9a73cdab588319ddfc5e8cef2909e5b112a5",
+  "items": 300,
+  "positives": 110
+ },
+ "recall_target": 0.95,
+ "curve": [
+  {
+   "threshold": 0.0,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0,
+   "fraction_sent": 1.0
+  },
+  {
+   "threshold": 0.05,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0,
+   "fraction_sent": 1.0
+  },
+  {
+   "threshold": 0.1,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0,
+   "fraction_sent": 1.0
+  },
+  {
+   "threshold": 0.15,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0,
+   "fraction_sent": 1.0
+  },
+  {
+   "threshold": 0.2,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0211,
+   "fraction_sent": 0.9867
+  },
+  {
+   "threshold": 0.25,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0579,
+   "fraction_sent": 0.9633
+  },
+  {
+   "threshold": 0.3,
+   "recall": 1.0,
+   "judge_calls_saved": 0.0684,
+   "fraction_sent": 0.9567
+  },
+  {
+   "threshold": 0.35,
+   "recall": 1.0,
+   "judge_calls_saved": 0.1053,
+   "fraction_sent": 0.9333
+  },
+  {
+   "threshold": 0.4,
+   "recall": 1.0,
+   "judge_calls_saved": 0.1737,
+   "fraction_sent": 0.89
+  },
+  {
+   "threshold": 0.45,
+   "recall": 1.0,
+   "judge_calls_saved": 0.2263,
+   "fraction_sent": 0.8567
+  },
+  {
+   "threshold": 0.5,
+   "recall": 1.0,
+   "judge_calls_saved": 0.2737,
+   "fraction_sent": 0.8267
+  },
+  {
+   "threshold": 0.55,
+   "recall": 0.9909,
+   "judge_calls_saved": 0.3211,
+   "fraction_sent": 0.7933
+  },
+  {
+   "threshold": 0.6,
+   "recall": 0.9636,
+   "judge_calls_saved": 0.3316,
+   "fraction_sent": 0.7767
+  },
+  {
+   "threshold": 0.65,
+   "recall": 0.7545,
+   "judge_calls_saved": 0.3947,
+   "fraction_sent": 0.66
+  },
+  {
+   "threshold": 0.7,
+   "recall": 0.4727,
+   "judge_calls_saved": 0.4895,
+   "fraction_sent": 0.4967
+  },
+  {
+   "threshold": 0.75,
+   "recall": 0.2364,
+   "judge_calls_saved": 0.6526,
+   "fraction_sent": 0.3067
+  },
+  {
+   "threshold": 0.8,
+   "recall": 0.0636,
+   "judge_calls_saved": 0.9579,
+   "fraction_sent": 0.05
+  },
+  {
+   "threshold": 0.85,
+   "recall": 0.0091,
+   "judge_calls_saved": 1.0,
+   "fraction_sent": 0.0033
+  },
+  {
+   "threshold": 0.9,
+   "recall": 0.0,
+   "judge_calls_saved": 1.0,
+   "fraction_sent": 0.0
+  },
+  {
+   "threshold": 0.95,
+   "recall": 0.0,
+   "judge_calls_saved": 1.0,
+   "fraction_sent": 0.0
+  },
+  {
+   "threshold": 1.0,
+   "recall": 0.0,
+   "judge_calls_saved": 1.0,
+   "fraction_sent": 0.0
+  }
+ ],
+ "cross_validation": {
+  "folds": [
+   {
+    "selected_on": "even",
+    "threshold": 0.6,
+    "held_out_recall": 0.9273,
+    "held_out_saved": 0.3158
+   },
+   {
+    "selected_on": "odd",
+    "threshold": 0.55,
+    "held_out_recall": 1.0,
+    "held_out_saved": 0.3368
+   }
+  ],
+  "pooled_held_out": {
+   "recall": 0.9636,
+   "judge_calls_saved": 0.3263
+  }
+ },
+ "policy": {
+  "calibrated": true,
+  "threshold": 0.55,
+  "recall": 0.9909,
+  "judge_calls_saved": 0.3211,
+  "fraction_sent": 0.7933,
+  "reason": "lowest threshold meeting the recall target with the most savings",
+  "held_out_recall": 0.9636
+ }
+}

@@ -1,0 +1,15 @@
+# Test fixture for scope verification (plan 16.1). Signed by throwaway keys whose private halves were discarded.
+version: 1
+authorization:
+  reference: TEST-001
+  authorized_by: Test Owner <owner@example.com>
+  statement: Test fixture only; authorizes nothing real.
+  granted: 2026-11-01
+  expires: 2027-10-31
+targets:
+  - uri: hf-provider://Qwen/Qwen3-32B@deepinfra
+    note: one provider only
+  - uri: hf-provider://google/gemma-3-27b-it
+    note: any provider for this model
+  - uri: openai+https://api.example.com/v1#m
+  - uri: hf-space://owner/zoo

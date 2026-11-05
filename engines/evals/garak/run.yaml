@@ -1,0 +1,15 @@
+# probe-suite (garak) Phase 1 eval config. Overrides that matter:
+#   run.user_agent — garak otherwise stamps every HTTP library with "garak/<ver> (LLM vulnerability scanner …)" (D-014)
+#   generator stop=[] (router.json / vuln-target.json) — garak's default ['#', ';'] truncates code/markdown payloads
+#   soft_probe_prompt_cap / generations — request caps under the D-005 budget
+---
+run:
+  generations: 1
+  soft_probe_prompt_cap: 15
+  seed: 1337
+  user_agent: "hfsentinel/0.0.1"
+system:
+  parallel_attempts: false
+  lite: true
+reporting:
+  report_dir: /out

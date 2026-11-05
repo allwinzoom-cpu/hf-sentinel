@@ -1,0 +1,32 @@
+{
+  "label": "probe-suite-common",
+  "engine": "garak",
+  "tool_version": "0.17.1",
+  "repo": "NVIDIA/garak",
+  "image": "hfsentinel-engine-probe-suite:amd64",
+  "image_id": "sha256:fe2f621717e8aa84229675b092e02d0e3485347ee7eec39e4a8369979eeb612d",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/probe-suite.py",
+    "/out/probe-suite-common.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T01:01:42+00:00",
+  "duration_s": 39.2,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 2,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 0,
+    "user_agents": [],
+    "header_names": [],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=probe-suite techniques=2 successes=1 errors=0"
+}

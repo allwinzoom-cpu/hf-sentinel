@@ -1,0 +1,52 @@
+{
+  "tool": "probe-suite (garak 0.17.1)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 3,
+      "evidence": "Installed probes cover A1-A3, B1, B2, B22, C3, E5, H1, H3, H4"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 3,
+      "evidence": "OpenAI-compatible generator reached HF router and vuln target"
+    },
+    "Dynamic / adaptive": {
+      "score": 1,
+      "evidence": "Mostly static batteries"
+    },
+    "Multi-turn": {
+      "score": 1,
+      "evidence": "Single-turn in this eval"
+    },
+    "Agent/tool observation": {
+      "score": 0,
+      "evidence": "No tool-call observation"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 2,
+      "evidence": "Deterministic string detectors: 15/16 hits on vuln target; 50-item precision pending labels"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 2,
+      "evidence": "Estimate ~2 h per new probe (plugin classes)"
+    },
+    "Output format": {
+      "score": 3,
+      "evidence": "JSONL report, summarized to aggregates"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "Works hardened; default stop=['#',';'] truncates output; UA override does not reach SDK"
+    },
+    "Health (license, release, activity)": {
+      "score": 3,
+      "evidence": "Release 2026-10-16, active"
+    }
+  },
+  "decision": "Adopt for categories: owns static probe breadth with deterministic detectors",
+  "notes": [
+    "Encoding probes overlap with orchestrator converters; orchestrator owns encoding/mutation.",
+    "Override generator stop list and User-Agent in our adapter.",
+    "Weak-small followed direct override in 11/15 attempts (single run)."
+  ]
+}

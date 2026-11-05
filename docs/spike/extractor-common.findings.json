@@ -1,0 +1,12 @@
+{
+  "engine_result_summary": [
+    {
+      "catalog_id": "C1",
+      "technique": "extraction-corpus",
+      "trials": 5,
+      "successes": 0
+    }
+  ],
+  "errors": [],
+  "findings": []
+}

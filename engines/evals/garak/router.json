@@ -1,0 +1,10 @@
+{
+  "openai": {
+    "OpenAICompatible": {
+      "uri": "https://router.huggingface.co/v1",
+      "max_tokens": 256,
+      "temperature": 0.7,
+      "stop": []
+    }
+  }
+}

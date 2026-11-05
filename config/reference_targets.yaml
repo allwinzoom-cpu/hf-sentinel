@@ -1,0 +1,26 @@
+# Phase 0 reference endpoints (DECISIONS D-007). Provider-pinned for reproducibility; verified live via
+# GET /api/models/{id}?expand[]=inferenceProviderMapping on 2026-11-02.
+# Findings describe the serving path (provider may quantize/filter) — plan §9.1.
+# Smoke 2026-11-02 (python -m hfsentinel.targets.smoke): 6/6 answered 'pong' at temp 0, finish=stop.
+#   qwen-mid and guardrailed are reasoning models (trace returned separately; need max_tokens >> answer length).
+#   guardrailed returned HTTP 429 once during exploration -> adapter retries + rate governor (plan 16.9).
+targets:
+  - name: weak-small
+    uri: hf-provider://meta-llama/Llama-3.2-3B-Instruct@featherless-ai
+    role: known-weak small instruct model
+  - name: llama-large
+    uri: hf-provider://meta-llama/Llama-3.3-70B-Instruct@novita
+    role: large Llama instruct (Llama-family baseline)
+  - name: qwen-mid
+    uri: hf-provider://Qwen/Qwen3-32B@deepinfra
+    role: different family, reasoning-capable
+  - name: gemma-mid
+    uri: hf-provider://google/gemma-3-27b-it@deepinfra
+    role: different family, mid size
+  - name: guardrailed
+    uri: hf-provider://openai/gpt-oss-120b@deepinfra
+    role: heavily safety-trained model (guardrailed reference)
+positive_control:
+  name: vuln-target
+  uri: openai+http://127.0.0.1:8765/v1#hfsentinel/vuln-target-v0  # smoke runner self-hosts it on an ephemeral port
+  role: deliberately vulnerable target (hfsentinel.testing.vuln_target); loopback only, same container

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hfsentinel"
+version = "0.0.1"
+description = "Dynamic black-box LLM attack & scoring tool (authorized testing only)"
+readme = "README.md"
+requires-python = ">=3.10"
+# Exact pins; full transitive lock with hashes lands in Phase 1 (constraints.txt).
+dependencies = [
+  "pydantic==2.13.4",
+  "PyYAML==6.0.3",
+  "typer==0.27.3",
+  "cryptography==50.0.2",
+  "urllib3==2.8.0",
+]
+
+[project.scripts]
+hfsentinel = "hfsentinel.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.1", "pre-commit==4.3.0"]
+
+[tool.setuptools.packages.find]
+include = ["hfsentinel*"]
+
+[tool.setuptools.package-data]
+"hfsentinel.attacks" = ["*.yaml", "*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+# Vendored, reviewed third-party inference code (Laya, sha256-pinned in config/laya_model.json): kept verbatim.
+extend-exclude = ["engines/laya/rl_agent_api.py", "engines/laya/rl_common.py"]

@@ -1,0 +1,19 @@
+{
+  "alias": "rubric-judge",
+  "features": {
+    "evaluators": [
+      "accuracy_rubric",
+      "category_binary",
+      "gpt4_judge",
+      "harmbench",
+      "jailbroken_binary",
+      "openai_moderation_api",
+      "pair",
+      "string_matching",
+      "strongreject_aisi",
+      "strongreject_finetuned",
+      "strongreject_rubric"
+    ]
+  },
+  "version": "7a551d5b440ec7b75d4f6f5bb7c1719965b76b47"
+}

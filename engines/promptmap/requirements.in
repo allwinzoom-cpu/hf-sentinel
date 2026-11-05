@@ -1,0 +1,9 @@
+# Runtime deps of utkusen/promptmap@432e072 (its requirements.txt is unpinned; the lock pins them).
+# The script itself comes from the sha256-pinned commit tarball, never from the unrelated PyPI "promptmap".
+openai>=1.0.0
+anthropic>=0.7.0
+ollama>=0.1.0
+google-genai>=0.7.0
+requests
+tiktoken
+PyYAML

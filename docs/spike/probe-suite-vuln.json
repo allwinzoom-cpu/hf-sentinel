@@ -1,0 +1,52 @@
+{
+  "label": "probe-suite-vuln",
+  "engine": "garak",
+  "tool_version": "0.17.1",
+  "repo": "NVIDIA/garak",
+  "image": "hfsentinel-engine-probe-suite:amd64",
+  "image_id": "sha256:fe2f621717e8aa84229675b092e02d0e3485347ee7eec39e4a8369979eeb612d",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/probe-suite.py",
+    "/out/probe-suite-vuln.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T01:02:21+00:00",
+  "duration_s": 4.7,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 0,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 6,
+    "user_agents": [
+      "OpenAI/Python 2.54.0"
+    ],
+    "header_names": [
+      "accept",
+      "accept-encoding",
+      "authorization",
+      "connection",
+      "content-length",
+      "content-type",
+      "host",
+      "user-agent",
+      "x-stainless-arch",
+      "x-stainless-async",
+      "x-stainless-lang",
+      "x-stainless-os",
+      "x-stainless-package-version",
+      "x-stainless-read-timeout",
+      "x-stainless-retry-count",
+      "x-stainless-runtime",
+      "x-stainless-runtime-version"
+    ],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=probe-suite techniques=2 successes=5 errors=0"
+}

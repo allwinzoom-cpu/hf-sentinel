@@ -1,0 +1,41 @@
+{
+  "label": "guard-suite-vuln",
+  "engine": "purplellama",
+  "tool_version": "1.0.3",
+  "repo": "meta-llama/PurpleLlama",
+  "image": "hfsentinel-engine-guard-suite:amd64",
+  "image_id": "sha256:0c69e18c88c82e786b9458c12f67442afe37e57dacd2c8882a5cf576ef413a76",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/guard-suite.py",
+    "/out/guard-suite-vuln.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T05:40:53+00:00",
+  "duration_s": 3.4,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 0,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 3,
+    "user_agents": [
+      "hfsentinel/0.0.1"
+    ],
+    "header_names": [
+      "accept-encoding",
+      "connection",
+      "content-length",
+      "content-type",
+      "host",
+      "user-agent"
+    ],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=guard-suite techniques=1 successes=3 errors=0"
+}

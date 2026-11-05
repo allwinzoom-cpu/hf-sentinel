@@ -1,0 +1,41 @@
+{
+  "label": "extractor-vuln",
+  "engine": "promptmap",
+  "tool_version": "432e072ae654788ad5b30172d42f3b1bcbda21cf",
+  "repo": "utkusen/promptmap",
+  "image": "hfsentinel-engine-extractor:amd64",
+  "image_id": "sha256:39e97aed848717a375a853dab990aa3250452f19ca354597da030545c784ca64",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/extractor.py",
+    "/out/extractor-vuln.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T01:00:11+00:00",
+  "duration_s": 2.3,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 0,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 5,
+    "user_agents": [
+      "hfsentinel/0.0.1"
+    ],
+    "header_names": [
+      "accept-encoding",
+      "connection",
+      "content-length",
+      "content-type",
+      "host",
+      "user-agent"
+    ],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=extractor techniques=1 successes=5 errors=0"
+}

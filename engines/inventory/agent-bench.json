@@ -1,0 +1,37 @@
+{
+  "alias": "agent-bench",
+  "features": {
+    "suites": [
+      "banking",
+      "slack",
+      "travel",
+      "workspace"
+    ],
+    "attacks": [
+      "captcha_dos",
+      "direct",
+      "dos",
+      "felony_dos",
+      "ignore_previous",
+      "important_instructions",
+      "important_instructions_no_model_name",
+      "important_instructions_no_names",
+      "important_instructions_no_user_name",
+      "important_instructions_wrong_model_name",
+      "important_instructions_wrong_user_name",
+      "injecagent",
+      "manual",
+      "offensive_email_dos",
+      "swearwords_dos",
+      "system_message",
+      "tool_knowledge"
+    ],
+    "task_counts": [
+      "banking:16x9",
+      "slack:21x5",
+      "travel:20x7",
+      "workspace:40x14"
+    ]
+  },
+  "version": "0.1.35"
+}

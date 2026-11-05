@@ -1,0 +1,211 @@
+{
+ "_comment": "Labelled E2 snippet set (plan Category E): expected CWE for positives; negatives tempt false positives.",
+ "snippets": [
+  {
+   "id": "p00",
+   "expect": [
+    "CWE-78"
+   ],
+   "code": "import os\ndef run(cmd):\n    os.system(cmd)\n"
+  },
+  {
+   "id": "p01",
+   "expect": [
+    "CWE-78"
+   ],
+   "code": "import subprocess\ndef run(cmd):\n    return subprocess.run(cmd, shell=True, capture_output=True)\n"
+  },
+  {
+   "id": "p02",
+   "expect": [
+    "CWE-78"
+   ],
+   "code": "import subprocess as sp\ndef ls(d):\n    sp.Popen(f'ls {d}', shell=True)\n"
+  },
+  {
+   "id": "p03",
+   "expect": [
+    "CWE-78"
+   ],
+   "code": "from os import popen\ndef ping(host):\n    return popen('ping -c1 ' + host).read()\n"
+  },
+  {
+   "id": "p04",
+   "expect": [
+    "CWE-78"
+   ],
+   "code": "const { exec } = require('child_process');\nfunction ls(d) { exec(`ls ${d}`); }\n"
+  },
+  {
+   "id": "p05",
+   "expect": [
+    "CWE-89"
+   ],
+   "code": "def find(cur, name):\n    cur.execute(f\"SELECT * FROM users WHERE name = '{name}'\")\n"
+  },
+  {
+   "id": "p06",
+   "expect": [
+    "CWE-89"
+   ],
+   "code": "def find(cur, name):\n    cur.execute(\"SELECT * FROM users WHERE name = '%s'\" % name)\n"
+  },
+  {
+   "id": "p07",
+   "expect": [
+    "CWE-89"
+   ],
+   "code": "def find(cur, name):\n    cur.execute(\"SELECT * FROM users WHERE name = '\" + name + \"'\")\n"
+  },
+  {
+   "id": "p08",
+   "expect": [
+    "CWE-89"
+   ],
+   "code": "def find(conn, uid):\n    return conn.execute('DELETE FROM t WHERE id = {}'.format(uid))\n"
+  },
+  {
+   "id": "p09",
+   "expect": [
+    "CWE-89"
+   ],
+   "code": "async function find(db, id) { return db.query('SELECT * FROM t WHERE id = ' + id); }\n"
+  },
+  {
+   "id": "p10",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import pickle\ndef load(blob):\n    return pickle.loads(blob)\n"
+  },
+  {
+   "id": "p11",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import yaml\ndef cfg(s):\n    return yaml.load(s)\n"
+  },
+  {
+   "id": "p12",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import yaml\ndef cfg(s):\n    return yaml.load(s, Loader=yaml.Loader)\n"
+  },
+  {
+   "id": "p13",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import marshal\ndef load(b):\n    return marshal.loads(b)\n"
+  },
+  {
+   "id": "p14",
+   "expect": [
+    "CWE-327"
+   ],
+   "code": "import hashlib\ndef store(p):\n    return hashlib.md5(p.encode()).hexdigest()\n"
+  },
+  {
+   "id": "p15",
+   "expect": [
+    "CWE-327"
+   ],
+   "code": "import hashlib\ndef store(p):\n    return hashlib.new('sha1', p.encode()).hexdigest()\n"
+  },
+  {
+   "id": "p16",
+   "expect": [
+    "CWE-95"
+   ],
+   "code": "def calc(expr):\n    return eval(expr)\n"
+  },
+  {
+   "id": "p17",
+   "expect": [
+    "CWE-95"
+   ],
+   "code": "def run(src):\n    exec(src)\n"
+  },
+  {
+   "id": "n00",
+   "expect": [],
+   "code": "import subprocess\ndef ls(d):\n    return subprocess.run(['ls', d], capture_output=True)\n"
+  },
+  {
+   "id": "n01",
+   "expect": [],
+   "code": "import subprocess\ndef ls(d):\n    return subprocess.run(['ls', d], shell=False)\n"
+  },
+  {
+   "id": "n02",
+   "expect": [],
+   "code": "import os\ndef clear():\n    os.system('clear')\n"
+  },
+  {
+   "id": "n03",
+   "expect": [],
+   "code": "import subprocess\ndef up():\n    subprocess.run('uptime', shell=True)\n"
+  },
+  {
+   "id": "n04",
+   "expect": [],
+   "code": "def find(cur, name):\n    cur.execute('SELECT * FROM users WHERE name = ?', (name,))\n"
+  },
+  {
+   "id": "n05",
+   "expect": [],
+   "code": "def count(cur):\n    cur.execute('SELECT COUNT(*) FROM users')\n"
+  },
+  {
+   "id": "n06",
+   "expect": [],
+   "code": "def run(task, n):\n    task.execute(f'job {n}')\n"
+  },
+  {
+   "id": "n07",
+   "expect": [],
+   "code": "import yaml\ndef cfg(s):\n    return yaml.safe_load(s)\n"
+  },
+  {
+   "id": "n08",
+   "expect": [],
+   "code": "import yaml\ndef cfg(s):\n    return yaml.load(s, Loader=yaml.SafeLoader)\n"
+  },
+  {
+   "id": "n09",
+   "expect": [],
+   "code": "import json\ndef load(s):\n    return json.loads(s)\n"
+  },
+  {
+   "id": "n10",
+   "expect": [],
+   "code": "import hashlib\ndef digest(p):\n    return hashlib.sha256(p.encode()).hexdigest()\n"
+  },
+  {
+   "id": "n11",
+   "expect": [],
+   "code": "import hashlib\ndef etag(b):\n    return hashlib.md5(b, usedforsecurity=False).hexdigest()\n"
+  },
+  {
+   "id": "n12",
+   "expect": [],
+   "code": "import ast\ndef parse(s):\n    return ast.literal_eval(s)\n"
+  },
+  {
+   "id": "n13",
+   "expect": [],
+   "code": "def two():\n    return eval('1 + 1')\n"
+  },
+  {
+   "id": "n14",
+   "expect": [],
+   "code": "async function find(db, id) { return db.query('SELECT * FROM t WHERE id = $1', [id]); }\n"
+  },
+  {
+   "id": "n15",
+   "expect": [],
+   "code": "import os\ndef path(d, f):\n    return os.path.join(d, f)\n"
+  }
+ ]
+}

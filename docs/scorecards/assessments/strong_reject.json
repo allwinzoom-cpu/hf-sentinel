@@ -1,0 +1,51 @@
+{
+  "tool": "rubric-judge (strong_reject @7a551d5)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 1,
+      "evidence": "Judge for B-category success; not an attacker in our use"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 2,
+      "evidence": "Judge calls routed to HF router via litellm kwargs"
+    },
+    "Dynamic / adaptive": {
+      "score": 0,
+      "evidence": "Scoring only"
+    },
+    "Multi-turn": {
+      "score": 0,
+      "evidence": "Single response scoring"
+    },
+    "Agent/tool observation": {
+      "score": 0,
+      "evidence": "No tool-call observation"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 1,
+      "evidence": "With Llama-3.3-70B as judge: precision 0.55, recall 1.0 on 12 human-labelled items; no threshold fixed it"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 2,
+      "evidence": "New evaluator = registered function"
+    },
+    "Output format": {
+      "score": 2,
+      "evidence": "Dict scores per item"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "Bare except returns NaN on parse failure (we treat as error); heavy torch deps for unused fine-tuned judge"
+    },
+    "Health (license, release, activity)": {
+      "score": 2,
+      "evidence": "Last commit 2025-07-07"
+    }
+  },
+  "decision": "Borrow: keep only the rubric template; run it with a frontier judge that passes the human-label gate",
+  "notes": [
+    "Judge-model choice dominates quality; measure every judge on >=50 labelled items first.",
+    "Vuln-target run N/A: this is a judge; evaluated against pinned human labels instead."
+  ]
+}

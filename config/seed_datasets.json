@@ -1,0 +1,68 @@
+{
+ "_comment": "Pinned seed and calibration datasets (plan Judge ensemble v1). Each file is downloaded at runtime, verified against its sha256 before parsing, and never redistributed. Commits resolved from each repository's history on 2026-11-03.",
+ "datasets": {
+  "jailbreak-behaviors": {
+   "url": "https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors/resolve/886acc352a31533ffbcf4ef22c744658688086fc/data/harmful-behaviors.csv",
+   "sha256": "4a8ec6832056b631eb092dccc60d37a61c3d441268268888b3d006288afeffa1",
+   "format": "csv",
+   "goal_field": "Goal",
+   "category_field": "Category",
+   "rows": 100,
+   "license": "MIT"
+  },
+  "benign-behaviors": {
+   "url": "https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors/resolve/886acc352a31533ffbcf4ef22c744658688086fc/data/benign-behaviors.csv",
+   "sha256": "3cda234d21a991fa309bbfea4b6d9dae31ccdf8e9d452424b6a983e4fdc33468",
+   "format": "csv",
+   "goal_field": "Goal",
+   "category_field": "Category",
+   "rows": 100,
+   "license": "MIT"
+  },
+  "judge-comparison": {
+   "url": "https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors/resolve/886acc352a31533ffbcf4ef22c744658688086fc/data/judge-comparison.csv",
+   "sha256": "dacaf76a1057785f11b0fc6aa07b9a73cdab588319ddfc5e8cef2909e5b112a5",
+   "format": "csv",
+   "goal_field": "goal",
+   "category_field": "",
+   "rows": 300,
+   "license": "MIT"
+  },
+  "forbidden-prompts": {
+   "url": "https://raw.githubusercontent.com/alexandrasouly/strongreject/3432b2d696b428f242bd507df96d80f686571d5e/strongreject_dataset/strongreject_dataset.csv",
+   "sha256": "4dd70357e4ff8b5d0ba5ebafecab5d6dd5633ce8046e3dd1c8bd93e64de44381",
+   "format": "csv",
+   "goal_field": "forbidden_prompt",
+   "category_field": "category",
+   "rows": 313,
+   "license": "MIT"
+  },
+  "harm-behaviors": {
+   "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/c0423b952435fcc8467108d8f25962dbae5b7de2/data/behavior_datasets/harmbench_behaviors_text_all.csv",
+   "sha256": "8d81accedd38eaaf8b760618622bb888417d1fd0c86eba65c427a16f1cbb4afc",
+   "format": "csv",
+   "goal_field": "Behavior",
+   "category_field": "SemanticCategory",
+   "rows": 400,
+   "license": "MIT"
+  },
+  "adv-behaviors": {
+   "url": "https://raw.githubusercontent.com/llm-attacks/llm-attacks/a62d1307e38b3a076e614b20781c785fd860d813/data/advbench/harmful_behaviors.csv",
+   "sha256": "6cd1a5c63c07610d7eb67307772ee5606017ee950b5770ab288a2c487489d3e1",
+   "format": "csv",
+   "goal_field": "goal",
+   "category_field": "",
+   "rows": 520,
+   "license": "MIT"
+  },
+  "prompt-injection": {
+   "url": "https://raw.githubusercontent.com/meta-llama/PurpleLlama/ef5a7748472f17c39d37960de4fd3a63e368d362/CybersecurityBenchmarks/datasets/prompt_injection/prompt_injection.json",
+   "sha256": "069e4d5d36f6d19f972a3bbc65df840cc729354f89358a9031aeb44d95b18a9a",
+   "format": "json",
+   "goal_field": "user_input",
+   "category_field": "injection_type",
+   "rows": 251,
+   "license": "see upstream repository (no single SPDX id)"
+  }
+ }
+}

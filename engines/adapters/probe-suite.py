@@ -11,7 +11,11 @@ import sys
 from _common import emit, load_job, proven, technique
 
 PROBES = {"A1": ("promptinject.HijackHateHumans", "direct-override-probes"),
-          "B1": ("dan.Dan_11_0", "persona-override-probe")}
+          "A2": ("latentinjection.LatentInjectionReport", "indirect-injection-probes"),
+          "A3": ("goodside.Tag", "hidden-tag-injection-probe"),
+          "B1": ("dan.Dan_11_0", "persona-override-probe"),
+          "C1": ("sysprompt_extraction.SystemPromptExtraction", "system-prompt-extraction-corpus"),
+          "E5": ("web_injection.MarkdownXSS", "active-markup-exfil-probe")}
 WORK = pathlib.Path("/tmp/probe-suite")
 
 

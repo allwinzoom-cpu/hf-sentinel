@@ -27,7 +27,7 @@ VULN = {"ref": "openai+http://vuln-target:8765/v1#hfsentinel/vuln-target-v0", "e
         "model": "hfsentinel/vuln-target-v0"}
 # alias -> (versions.json key, techniques, trials, runs on vuln target?)
 ADAPTERS = {
-    "probe-suite": ("garak", ["A1", "B1"], 5, True),
+    "probe-suite": ("garak", ["A1", "A2", "A3", "B1", "C1", "E5"], 5, True),
     "orchestrator": ("pyrit", ["A1", "B2"], 2, True),
     "extractor": ("promptmap", ["C1"], 5, True),
     "agent-bench": ("agentdojo", ["D1"], 2, False),  # needs a tool-calling target (Section 4.0 precondition)

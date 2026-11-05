@@ -34,6 +34,7 @@ COPY --chown=root:root calibration/ /app/calibration/
 COPY --chown=root:root engines/ /app/engines/
 COPY --chown=root:root docs/spike/ /app/docs/spike/
 COPY --chown=root:root docs/judges/ /app/docs/judges/
+COPY --chown=root:root docs/coverage.md /app/docs/coverage.md
 RUN chmod -R a+rX,go-w /app
 USER 10001:10001
 ENV RUFF_CACHE_DIR=/tmp/ruff PYTEST_ADDOPTS="-p no:cacheprovider"

@@ -42,6 +42,7 @@ from hfsentinel.engines.sweep import NATIVE, TechniqueRun
 from hfsentinel.report import render
 from hfsentinel.report.build import assemble, canonical_sha256
 from hfsentinel.report.schema import Finding
+from hfsentinel.sandbox import ssrf
 from hfsentinel.scope import Attestation, ScopeError, authorize, load_allowed_signers, load_scope
 from hfsentinel.scoring.severity import at_least
 from hfsentinel.secrets import SecretNotFound, hf_token
@@ -359,6 +360,11 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
         _print_attestation(attestation)
         return
     _print_attestation(attestation)
+    if ssrf.hosted_mode():  # hosted Space (16.8): reject a user target/sink that resolves to a private/metadata host
+        try:
+            ssrf.guard_hosted(resolved, res.controls.extras.sink_url)
+        except ssrf.SsrfError as e:
+            raise _fail(f"hosted SSRF guard refused the target/sink: {e}; no requests sent", EXIT_SCOPE) from None
     _execute(resolved, res, attestation, config, run_engines=engines, system_one_url=system_one,
              system_one_multilingual_url=system_one_multilingual, use_judges=judges)
 
@@ -604,6 +610,12 @@ def diff(target: Annotated[str, typer.Argument(help="Target URI (the model under
         raise _fail(f"{e}; no requests sent", EXIT_SCOPE) from None
     t_target, t_att = _authorize_live(target, verified, via)
     t_base, b_att = _authorize_live(base, verified, via)
+    if ssrf.hosted_mode():  # hosted Space (16.8): both user targets must resolve to global hosts
+        try:
+            ssrf.guard_hosted(t_target, res.controls.extras.sink_url)
+            ssrf.guard_hosted(t_base)
+        except ssrf.SsrfError as e:
+            raise _fail(f"hosted SSRF guard refused a target/sink: {e}; no requests sent", EXIT_SCOPE) from None
     typer.echo(f"diff      target {_clean(target, 80)}  vs  base {_clean(base, 80)}")
     target_report = _campaign_report(t_target, res.controls, t_att, ref=target)
     base_report = _campaign_report(t_base, res.controls, b_att, ref=base)

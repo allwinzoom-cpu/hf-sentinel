@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 30/71 tasks ticked (42.3%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 31/71 tasks ticked (43.7%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -59,6 +59,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 - P2 · Model-card snippet generator (Phase 5) — `report/model_card.py::model_card(report)` renders a short pasteable Markdown block (grade + coverage, per-category score table for tested categories, confirmed-findings summary + headline finding, run metadata incl. report sha256), reusing `render.md`/`_pct` so target strings are escaped and only alias/aggregate data appears (D-014/D-015). Exposed as `--format card` → `hfsentinel-<run>.modelcard.md` (0600). Verified amd64+arm64: ruff, 784/784 pytest (+4), plan harness ALL PASS. `tests/test_model_card.py`: scores+metadata, no-findings render, hostile-string escaping, card format writes 0600. Fully complete — no caveats.
 
 - P2 · B23 constrained-decoding harness (16.7) — `hfsentinel/attacks/cda.py`: `cda_request` pins the answer field to a single-value enum (planted canary), so a model honouring structured output fills it even for a free-text-refused request (no "refuse" token in the grammar); `run_cda` runs seeded trials (unforgeable canary oracle) → `CdaResult` + reproduce verdict, recording N/A when the target rejects `response_format`. Fully wired via preconditions: recon detects structured-output support (vuln target now **enforces** `response_format`), planner marks B23 experimental (candidate, never scored), campaign `_experimental` stage runs it and records the verdict (`campaign.experimental` + S4 decision, governed). Verified amd64+arm64: ruff, 790/790 pytest (+6), plan harness ALL PASS. `tests/test_cda.py` (6) + `tests/test_recon_planner.py` updated for the detected capability. Fully complete — no caveats.
+
+- P2 · Sequential early stopping (16.6) — implemented in `sweep.stop_reason` (adaptive `run_technique`/campaign): MIN_TRIALS floor, then waves; stop when the §2.2 outcome is decided — Wilson lower bound clears the threshold (confirmed) or remaining trials can't reach it (impossible); temp-0 attempt only when it can change the outcome. Done-when proven: `tests/test_sequential_stopping.py` — on a confirmed fixture (ALWAYS/C2) and an impossible one (control/A1) the adaptive run reaches the **same verdict** as the full run with strictly fewer requests. Verified amd64+arm64: ruff, 792/792 pytest (+2), plan harness ALL PASS. Fully complete — no caveats.
 
 ## In progress
 - Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint (needs a verified download) to light up the routing; a judge-scored engine technique emitting candidates (harmful-goal jailbreak) to light up the judge path; full D-018 always-on engine service; HF Jobs target runner (D-004); Wrap garak; distillation. Awaiting direction.

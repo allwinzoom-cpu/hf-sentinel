@@ -87,13 +87,14 @@ def run(engine: str, label: str, command: list[str], max_seconds: int, allow: st
     t0 = time.monotonic()
     try:
         must(["docker", "network", "create", "--internal", net])
+        # The runtime image entrypoint is `python -m hfsentinel` (the CLI); override it to run a helper module directly.
         must(["docker", "run", "-d", "--platform", "linux/amd64", "--name", proxy, "--network", net, "--network-alias", "egress", *HARDENED,
-              "-v", f"{log_dir}:/logs", "--user", f"{os.getuid()}:{os.getgid()}", RUNTIME_IMAGE,
-              "hfsentinel.sandbox.egress_proxy", "--listen", "0.0.0.0:3128", "--allow", allow,
+              "-v", f"{log_dir}:/logs", "--user", f"{os.getuid()}:{os.getgid()}", "--entrypoint", "python", RUNTIME_IMAGE,
+              "-m", "hfsentinel.sandbox.egress_proxy", "--listen", "0.0.0.0:3128", "--allow", allow,
               "--log", "/logs/egress.jsonl"])
         must(["docker", "network", "connect", "bridge", proxy])
         must(["docker", "run", "-d", "--platform", "linux/amd64", "--name", vt, "--network", net, "--network-alias", "vuln-target", *HARDENED,
-              RUNTIME_IMAGE, "hfsentinel.testing.vuln_target", "--host", "0.0.0.0", "--port", "8765"])
+              "--entrypoint", "python", RUNTIME_IMAGE, "-m", "hfsentinel.testing.vuln_target", "--host", "0.0.0.0", "--port", "8765"])
         envs = []
         for k, v in {**TELEMETRY_OFF, "HTTPS_PROXY": "http://egress:3128", "HTTP_PROXY": "http://egress:3128",
                      "https_proxy": "http://egress:3128", "http_proxy": "http://egress:3128",

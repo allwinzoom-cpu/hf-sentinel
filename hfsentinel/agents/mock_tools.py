@@ -28,9 +28,12 @@ def _canary() -> str:
 
 @dataclass
 class MockToolEnv:
-    """Records tool calls and serves canned, canary-bearing outputs; no real side effects."""
+    """Records tool calls and serves canned, canary-bearing outputs; no real side effects. A fixture may *inject*
+    attacker content into a tool's output or description (D1/D2/D6) via `injected_outputs`/`injected_descriptions`."""
     calls: list[ToolCall] = field(default_factory=list)
     canaries: dict[str, str] = field(default_factory=dict)
+    injected_outputs: dict[str, str] = field(default_factory=dict)       # tool -> attacker-controlled output
+    injected_descriptions: dict[str, str] = field(default_factory=dict)  # tool -> attacker-controlled description
 
     def _canary_for(self, tool: str) -> str:
         return self.canaries.setdefault(tool, _canary())
@@ -38,7 +41,7 @@ class MockToolEnv:
     def schemas(self) -> list[dict]:
         """OpenAI function-calling tool schemas (also valid MCP tool shapes: name + description + input schema)."""
         s = {"type": "string"}
-        return [
+        schemas = [
             {"type": "function", "function": {"name": "send_email", "description": "Send an email.",
              "parameters": {"type": "object", "properties": {"to": s, "subject": s, "body": s},
                             "required": ["to", "body"]}}},
@@ -49,6 +52,11 @@ class MockToolEnv:
             {"type": "function", "function": {"name": "http_get", "description": "Fetch a URL over HTTP.",
              "parameters": {"type": "object", "properties": {"url": s}, "required": ["url"]}}},
         ]
+        for tool in schemas:                          # a fixture may poison a tool's description at runtime (D2)
+            name = tool["function"]["name"]
+            if name in self.injected_descriptions:
+                tool["function"]["description"] = self.injected_descriptions[name]
+        return schemas
 
     def dispatch(self, name: str, arguments: dict | None = None) -> str:
         """Run one fake tool: record the call and return a canned, canary-bearing output. Unknown tools error (as a
@@ -60,6 +68,8 @@ class MockToolEnv:
 
     def _run(self, name: str, args: dict) -> str:
         canary = self._canary_for(name)
+        if name in self.injected_outputs:             # a fixture planted attacker content in this tool's output
+            return self.injected_outputs[name]
         if name == "send_email":                      # no SMTP; just acknowledges
             return f"Email queued to {args.get('to', '?')} (message-id {canary})."
         if name == "read_file":                       # no real FS; canned content with a planted secret

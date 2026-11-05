@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 43/71 tasks ticked (60.6%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 44/71 tasks ticked (62.0%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -86,8 +86,10 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - P4 · Mock-tool environment (Category D groundwork) — `hfsentinel/agents/mock_tools.py`: `MockToolEnv` exposes fake send_email/read_file/query_db/http_get as OpenAI function-calling (MCP-compatible) schemas; `dispatch` records every `ToolCall` and returns canned canary-bearing output with no real side effects; `canary_leaked` detects a model exfiltrating a tool secret; `run_tool_loop` drives a tool-calling target. The D1–D6 fixtures will layer injections on this sandbox. Verified amd64+arm64: ruff, pytest (+6 `tests/test_mock_tools.py`), plan harness ALL PASS. Fully complete — the Category D foundation.
 
+- P4 · Runtime tool-attack fixtures D1–D6 — `hfsentinel/agents/tool_fixtures.py`: six fixtures on the mock-tool env, one per delivery channel (D1 tool-output injection, D2 poisoned description, D3 cross-tool laundering, D4 excessive agency, D5 memory poisoning, D6 inter-agent injection). Each plants an injection (`setup`), carries the vulnerable agent's `attack`, and a `canary_action` call-log oracle; the shared oracle separates contacting the attacker sink from a confirmed exfiltration (attacker-bound call carrying a planted tool secret). `MockToolEnv` extended with `injected_outputs`/`injected_descriptions`. Verified amd64+arm64: ruff, pytest (+10 `tests/test_tool_fixtures.py`), plan harness ALL PASS. Fully complete (LlamaFirewall AlignmentCheck secondary trace judge is the Llama/engine side).
+
 ## In progress
-- Next: open P2/P4 — D1–D6 runtime tool-attack fixtures (on the mock-tool env), taint/memory/loop controls; pin+fetch-verify the Laya multilingual checkpoint; judge-scored engine candidates (harmful-goal jailbreak); full D-018 engine service; HF Jobs runner (D-004); Wrap garak; distillation. Awaiting direction.
+- Next: open P4/P2 — taint/memory/loop controls (D3 taint-tagging, D5 cross-session, loop caps); pin+fetch-verify the Laya multilingual checkpoint; judge-scored engine candidates; full D-018 engine service; HF Jobs runner (D-004); Wrap garak; distillation. Awaiting direction.
 - Owner decision: drop CodeShield from E2 (recommended) — semgrep rule-parse failure.
 - Working order (owner, D-020): ~~rate governor~~ → ~~recon + planner~~ → ~~scope enforcement~~ → ~~canary harness~~ → ~~per-trial canaries~~ → ~~Category E~~ → ~~judges~~ + ~~judge hardening~~ → ~~scoring/report~~ → ~~vulnerable model zoo~~ (rate-profiled test target, D-023) → ~~campaign v1~~ → **Laya**. Zoo GPU use capped at 30 ZeroGPU-min/day, never credits; HF token never stored in a Space.
 - Owner review: D-019 (stdlib adapters instead of vendor SDKs).

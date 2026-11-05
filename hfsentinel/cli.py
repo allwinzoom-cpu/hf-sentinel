@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import secrets
 import time
 from enum import Enum
@@ -527,6 +528,99 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     fail_on = c.output.fail_on.capitalize()
     if any(at_least(f.severity, fail_on) for f in report_doc.findings):
         raise _fail(f"confirmed finding at or above --fail-on {c.output.fail_on}", EXIT_FINDINGS)
+
+
+def _authorize_live(ref: str, verified, via: Via):
+    """Two-phase scope check (pre-resolve + post-resolve) for one live target; returns (ResolvedTarget, Attestation)."""
+    try:
+        authorize(verified, _parse(ref), resolved=False)
+    except ScopeError as e:
+        raise _fail(f"{e}; no requests sent", EXIT_SCOPE) from None
+    resolved = _resolve(ref, via)
+    try:
+        att = authorize(verified, resolved, resolved=True)
+    except ScopeError as e:
+        raise _fail(f"{e} (as resolved: {resolved.request_model}); no requests sent", EXIT_SCOPE) from None
+    return resolved, att
+
+
+def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, ref: str):
+    """Run the native staged campaign (recon → plan → breadth → confirm) and return the assembled Report. The
+    engine/judge/transcript stages of a full `scan` are omitted — `diff` compares native deterministic ASR."""
+    started = dt.datetime.now(dt.timezone.utc)
+    run_id = started.strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
+    profile = _run_recon(t, c)
+    plan = build_plan(t, selected=selected_ids(c), profile=profile, controls=c)
+    gov = Governor.from_controls(c)
+    try:
+        target = client(t, _optional_token(), max_requests=c.budget.max_requests, governor=gov,
+                        user_agent=c.target_io.user_agent)
+    except TargetURIError as e:
+        raise _fail(str(e), EXIT_INPUT) from None
+    _, pricing = _router_metadata(t)
+    if pricing:
+        gov.set_price(target.rate_key, pricing.input, pricing.output)
+    result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
+                          max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
+                          seed=c.target_io.seed, profile=profile, controls=c)
+    recon = {"requests": profile.requests, "over_refusal_rate": profile.over_refusal_rate,
+             "refusal_style": profile.refusal_style, "disagreements": list(profile.disagreements),
+             "facts": {k: {"value": f.value, "reason": f.reason} for k, f in profile.facts.items()}}
+    campaign = {"decisions": result.decisions, "attack_requests": result.requests,
+                "exhaustive_requests": result.exhaustive_requests,
+                "requests_saved": result.exhaustive_requests - result.requests, "baseline": result.baseline}
+    target_doc = {"ref": ref, "kind": t.kind, "resolved_model": t.model, "provider": t.provider,
+                  "request_model": t.request_model}
+    return assemble(target=target_doc, plan_steps=plan.steps, runs=result.runs, controls=c,
+                    controls_sha256=canonical_sha256(to_config(c)),
+                    attestation=attestation.to_dict() if attestation else None, recon=recon, campaign=campaign,
+                    baseline=result.baseline, ledger=gov.ledger.snapshot(), run_id=run_id, started=started,
+                    native=set(NATIVE))
+
+
+@app.command()
+def diff(target: Annotated[str, typer.Argument(help="Target URI (the model under test).")],
+         base: Annotated[str, typer.Option("--base", help="Base-model URI to compare against.")],
+         scope: Annotated[Path | None, typer.Option("--scope", help="Scope file authorizing BOTH target and base "
+                                                    "(loopback targets self-authorize).")] = None,
+         signers: Annotated[Path | None, typer.Option("--signers", help="OpenSSH allowed_signers for the scope.")] = None,
+         config: Annotated[Path | None, typer.Option("--config", help="sentinel.yaml with controls.")] = None,
+         via: ViaOpt = Via.auto,
+         trials: Annotated[int | None, typer.Option("--trials", help="Sampled trials per technique.")] = None,
+         out: Annotated[Path | None, typer.Option("--out", help="Write the diff table to this directory.")] = None,
+         ) -> None:
+    """Compare a target against a --base model: per-category ΔASR + over-refusal, for alignment-removal detection.
+
+    Both targets are live, so both must be authorized by the signed --scope (fail-closed). Sends traffic to each."""
+    from hfsentinel.report.diff import diff_reports, to_table
+    flags = {k: v for k, v in {"target": target, "trials": trials}.items() if v is not None}
+    try:
+        res = resolve_controls(flags, load_config(config) if config else None)
+    except ControlError as e:
+        raise _fail(str(e), EXIT_INPUT) from None
+    try:
+        verified = load_scope(scope, signers=load_allowed_signers(signers)) if scope is not None else None
+    except ScopeError as e:
+        raise _fail(f"{e}; no requests sent", EXIT_SCOPE) from None
+    t_target, t_att = _authorize_live(target, verified, via)
+    t_base, b_att = _authorize_live(base, verified, via)
+    typer.echo(f"diff      target {_clean(target, 80)}  vs  base {_clean(base, 80)}")
+    target_report = _campaign_report(t_target, res.controls, t_att, ref=target)
+    base_report = _campaign_report(t_base, res.controls, b_att, ref=base)
+    d = diff_reports(target_report, base_report)
+    table = to_table(d)
+    typer.echo(table)
+    if out is not None:
+        try:
+            path = Path(out)
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+            fd = os.open(path / "hfsentinel-diff.md", os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                         | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(table)
+            typer.echo(f"report    {_clean(str(path / 'hfsentinel-diff.md'), 200)}")
+        except OSError:
+            raise _fail("could not write the diff (directory not writable or file exists)", EXIT_INPUT) from None
 
 
 @app.command()

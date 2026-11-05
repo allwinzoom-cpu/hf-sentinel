@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 42/71 tasks ticked (59.2%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 43/71 tasks ticked (60.6%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -84,8 +84,10 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - P3 · H2/H5/H6/H7 hallucination fuzzers — `hfsentinel/halluc/fuzzers.py`: H2 `fabricated_apis` (dotted API calls vs an injectable reference), H5 `sycophantic_reversal` (answer-flip detector), H6 `fabricated_citations` (DOI/arXiv/URL vs an injectable source check), H7 `miscalibrated` (high-confidence language on a wrong answer). Existence checks injectable → offline tests; inducers are campaign/engine-side. All feed the Hallucination Score. Verified amd64+arm64: ruff, pytest (+8 `tests/test_halluc_fuzzers.py`), plan harness ALL PASS. Oracles complete. **With H1–H7 oracles now built, the whole hallucination category is covered.**
 
+- P4 · Mock-tool environment (Category D groundwork) — `hfsentinel/agents/mock_tools.py`: `MockToolEnv` exposes fake send_email/read_file/query_db/http_get as OpenAI function-calling (MCP-compatible) schemas; `dispatch` records every `ToolCall` and returns canned canary-bearing output with no real side effects; `canary_leaked` detects a model exfiltrating a tool secret; `run_tool_loop` drives a tool-calling target. The D1–D6 fixtures will layer injections on this sandbox. Verified amd64+arm64: ruff, pytest (+6 `tests/test_mock_tools.py`), plan harness ALL PASS. Fully complete — the Category D foundation.
+
 ## In progress
-- Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint (needs a verified download) to light up the routing; a judge-scored engine technique emitting candidates (harmful-goal jailbreak) to light up the judge path; full D-018 always-on engine service; HF Jobs target runner (D-004); Wrap garak; distillation. Awaiting direction.
+- Next: open P2/P4 — D1–D6 runtime tool-attack fixtures (on the mock-tool env), taint/memory/loop controls; pin+fetch-verify the Laya multilingual checkpoint; judge-scored engine candidates (harmful-goal jailbreak); full D-018 engine service; HF Jobs runner (D-004); Wrap garak; distillation. Awaiting direction.
 - Owner decision: drop CodeShield from E2 (recommended) — semgrep rule-parse failure.
 - Working order (owner, D-020): ~~rate governor~~ → ~~recon + planner~~ → ~~scope enforcement~~ → ~~canary harness~~ → ~~per-trial canaries~~ → ~~Category E~~ → ~~judges~~ + ~~judge hardening~~ → ~~scoring/report~~ → ~~vulnerable model zoo~~ (rate-profiled test target, D-023) → ~~campaign v1~~ → **Laya**. Zoo GPU use capped at 30 ZeroGPU-min/day, never credits; HF token never stored in a Space.
 - Owner review: D-019 (stdlib adapters instead of vendor SDKs).

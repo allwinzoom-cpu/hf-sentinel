@@ -252,6 +252,10 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          system_one: Annotated[str | None, typer.Option("--system-one", metavar="URL", help="Laya System-1 "
                                                "server URL (engines/laya --serve); advisory triage/routing, logged "
                                                "in the report. Off = every response goes to System-2.")] = None,
+         system_one_multilingual: Annotated[str | None, typer.Option("--system-one-multilingual", metavar="URL",
+                                               help="Laya multilingual-variant server URL; non-Latin-script replies "
+                                               "route here instead of the English checkpoint. Off = non-Latin replies "
+                                               "escalate to System-2.")] = None,
          judges: Annotated[bool, typer.Option("--judges/--no-judges", help="Score engine-emitted judge candidates "
                                                "with the System-2 panel (needs a token; D-017 judge budget). Laya "
                                                "triage gates each judge call. Off by default.")] = False,
@@ -354,7 +358,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
         _print_attestation(attestation)
         return
     _print_attestation(attestation)
-    _execute(resolved, res, attestation, config, run_engines=engines, system_one_url=system_one, use_judges=judges)
+    _execute(resolved, res, attestation, config, run_engines=engines, system_one_url=system_one,
+             system_one_multilingual_url=system_one_multilingual, use_judges=judges)
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
@@ -427,7 +432,8 @@ def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, u
 
 
 def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, config: Path | None,
-             *, run_engines: bool = False, system_one_url: str | None = None, use_judges: bool = False) -> None:
+             *, run_engines: bool = False, system_one_url: str | None = None,
+             system_one_multilingual_url: str | None = None, use_judges: bool = False) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -445,9 +451,12 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     if pricing:
         gov.set_price(target.rate_key, pricing.input, pricing.output)
     sink_host = urlsplit(c.extras.sink_url).hostname if c.extras.sink_url else None
-    s1 = SystemOne(http_client(system_one_url) if system_one_url else None)
+    s1 = SystemOne(http_client(system_one_url) if system_one_url else None,
+                   multilingual_client=http_client(system_one_multilingual_url) if system_one_multilingual_url else None)
     if system_one_url:
-        typer.echo(f"system-1  Laya advisory at {_clean(system_one_url, 80)} (never confirms; escalates to judges)")
+        ml = f" · multilingual at {_clean(system_one_multilingual_url, 60)}" if system_one_multilingual_url else \
+             " · non-Latin replies escalate (no multilingual variant)"
+        typer.echo(f"system-1  Laya advisory at {_clean(system_one_url, 80)} (never confirms; escalates to judges){ml}")
     runnable = sum(1 for s in plan.steps if s.disposition == "run" and s.catalog_id in NATIVE)
     typer.echo(f"campaign  S3 breadth: {runnable} techniques with native oracles · up to {c.target_io.trials} "
                f"trials each, stopping early once decided")

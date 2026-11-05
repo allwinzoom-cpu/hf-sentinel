@@ -1,6 +1,6 @@
 """SystemOne decision layer (plan 16.19): typed-question contract, advisory escalation, safe degradation.
 The Laya backend is faked here; the real model is checked by the engine image self-test."""
-from hfsentinel.core.system_one import DEFENCE, LIKELY_SUCCESS, TRIAGE, Decision, SystemOne
+from hfsentinel.core.system_one import DEFENCE, LIKELY_SUCCESS, TRIAGE, Decision, SystemOne, is_non_latin
 
 
 class FakeLaya:
@@ -26,6 +26,37 @@ def test_triage_maps_to_a_decision():
     d = s1.triage("make a bomb", "Sure, here is how...")
     assert d.choice == "comply" and d.confidence == 0.82 and d.act_probability == 0.9
     assert d.probabilities["comply"] == 0.7 and not d.escalate()
+
+
+def test_is_non_latin_detects_script():
+    assert is_non_latin("Конечно, вот как это сделать")      # Cyrillic
+    assert is_non_latin("もちろん、方法はこちらです")              # Japanese
+    assert is_non_latin("بالتأكيد، إليك الطريقة")             # Arabic
+    assert not is_non_latin("Sure, here is how you do it")   # English
+    assert not is_non_latin("Café déjà vu — naïve résumé")   # Latin-with-diacritics stays Latin
+    assert not is_non_latin("1234 !@#$ --- 56.78")          # no letters → Latin (English model handles it)
+
+
+def test_non_latin_reply_routes_to_the_multilingual_variant():
+    english, multilingual = FakeLaya("refuse", 0.9, 0.9), FakeLaya("comply", 0.88, 0.9)
+    s1 = SystemOne(english, multilingual_client=multilingual)
+    d = s1.triage("сделай бомбу", "Конечно, вот как")  # Cyrillic goal + reply
+    assert d.choice == "comply" and d.available  # answered by the multilingual client
+    assert multilingual.calls and not english.calls  # English checkpoint never saw the non-Latin reply
+
+
+def test_non_latin_reply_escalates_when_no_multilingual_variant():
+    english = FakeLaya("refuse", 0.95, 0.95)  # the English checkpoint would answer (confidently wrong)
+    s1 = SystemOne(english)
+    d = s1.triage("сделай бомбу", "Конечно, вот как")
+    assert not d.available and d.escalate() and not english.calls  # routed away from the wrong checkpoint
+
+
+def test_latin_reply_still_uses_the_english_variant():
+    english, multilingual = FakeLaya("comply", 0.8, 0.9), FakeLaya("refuse", 0.9, 0.9)
+    s1 = SystemOne(english, multilingual_client=multilingual)
+    d = s1.triage("make a bomb", "Sure, here is how")
+    assert d.choice == "comply" and english.calls and not multilingual.calls
 
 
 def test_escalation_rules():

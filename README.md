@@ -8,7 +8,8 @@ Everything builds, tests and runs in **Linux containers only** (DECISIONS D-009)
 
 **Docs:** [methodology](docs/methodology.md) (staged campaign, confirmation, retention, limitations) ·
 [scoring](docs/scoring.md) (Wilson CI, ASR@k, severity, grade, lift, Hallucination Score) ·
-[definitions](docs/definitions.md) (what counts as a finding).
+[definitions](docs/definitions.md) (what counts as a finding) ·
+[github-action](docs/github-action.md) (PR security gate: scan → SARIF → fail-on).
 
 ## Running in containers
 

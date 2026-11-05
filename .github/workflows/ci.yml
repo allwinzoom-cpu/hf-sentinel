@@ -1,6 +1,8 @@
 name: ci
 
 # DECISIONS D-009: everything runs in Linux containers; the host only builds and runs images.
+# CI runs amd64 only to limit GitHub Actions spend (arm64 runs under slow QEMU emulation and costs more minutes).
+# arm64 is still verified on every change via the local dual-arch container gate before push (D-009).
 on:
   push:
     branches: [main]
@@ -13,18 +15,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      matrix:
-        platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
       - name: Build test image
-        run: docker buildx build --platform "${{ matrix.platform }}" --target test -t hfsentinel:test --load .
+        run: docker buildx build --platform linux/amd64 --target test -t hfsentinel:test --load .
       - name: Lint + unit tests + plan harness (hardened container, no network)
         run: |
-          docker run --rm --platform "${{ matrix.platform }}" --read-only --tmpfs /tmp \
+          docker run --rm --platform linux/amd64 --read-only --tmpfs /tmp \
             --cap-drop ALL --security-opt no-new-privileges --network none hfsentinel:test

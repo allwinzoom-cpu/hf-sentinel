@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 38/71 tasks ticked (53.5%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 39/71 tasks ticked (54.9%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -75,6 +75,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 - P0 · Repo + CI + policy — verification tick: package skeleton (pyproject + __init__/__main__), `.pre-commit-config.yaml` (ruff + gitleaks + detect-private-key + hygiene hooks), `.github/workflows/ci.yml` building the test image and running ruff + pytest + plan harness in a hardened no-network container on every push/PR, and `SECURITY.md` with reporting + responsible-disclosure + ethics. Done-when met: CI green on every main merge (PRs #1–#10) and each PR. No new code — honest close-out of complete foundational work. amd64 gate: ruff, 806/806 pytest, plan harness ALL PASS.
 
 - P3 · Encoding/transform battery — `attacks/mutators.py` gains bijection (B14, reversible permutation cipher + key in hint), flip (B16 FlipAttack, its own inverse), artprompt (B15, middle-dot ASCII-art masking) behind the existing `str->str` interface (compose/wrap_injection stack them). `attacks/best_of_n.py` (B13): `asr_at_k_curve` + `power_law_fit` (log-log least squares) + extrapolate/samples_to_reach, stdlib. Catalog already sets B13/B15 ready, B14/B16 candidate → planner marks B13/B15 run, B14/B16 experimental. Verified amd64+arm64: ruff, pytest (+8 `tests/test_encoding_battery.py`), plan harness ALL PASS. Fully complete.
+
+- P3 · H1 package hallucination — `hfsentinel/halluc/registry_checks.py`: `extract` pulls package suggestions (pip/npm/cargo/gem installs + Python imports, stdlib never flagged) and `check(verifier=…)` verifies each against its registry. Verifier injectable (offline tests); default `exists_online` queries the 4 registries over HTTPS on a fixed allow-list, GET only, fails safe (only a clean 404 flags; any error → assume exists). H1 = Critical (§8.3). Feeds the Hallucination Score. Verified amd64+arm64: ruff, pytest (+7 `tests/test_registry_checks.py`), plan harness ALL PASS. Core oracle complete (the garak `packagehallucination` inducer is engine-side; live-registry refresh is Phase 6).
 
 ## In progress
 - Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint (needs a verified download) to light up the routing; a judge-scored engine technique emitting candidates (harmful-goal jailbreak) to light up the judge path; full D-018 always-on engine service; HF Jobs target runner (D-004); Wrap garak; distillation. Awaiting direction.

@@ -485,7 +485,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                 "escalations": result.escalations, "depth_requests": result.depth_requests,
                 "baseline": result.baseline, "baseline_requests": result.baseline_requests,
                 "judge_calls_made": result.judge_calls_made, "judge_calls_saved": result.judge_calls_saved,
-                "triage_agreement": result.triage_agreement,
+                "triage_agreement": result.triage_agreement, "experimental": result.experimental,
                 "strategy_library": "read-only (no write-back)" if library.write_failed else str(library.path)}
     if result.judge_calls_made or result.judge_calls_saved:
         typer.echo(f"system-1  Laya triage saved {result.judge_calls_saved} of "

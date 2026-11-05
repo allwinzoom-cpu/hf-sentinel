@@ -54,6 +54,7 @@ class CampaignResult:
     judge_calls_saved: int = 0     # confident refusals skipped by Laya triage (the savings)
     judge_saved_fraction: float = 0.0
     triage_agreement: float | None = None  # Laya-vs-System-2 agreement on judged items
+    experimental: list = field(default_factory=list)  # experimental techniques run (B23 CDA), recorded never scored
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
         self.decisions.append({"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
@@ -132,9 +133,29 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
                   concurrency=concurrency, seed=seed)
     _judge_confirm(res, panel, s1, judge_candidates or [])
+    _experimental(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
     if library is not None:
         _learn(res, library, profile)
     return res
+
+
+def _experimental(res: CampaignResult, target, plan: Plan, *, profile, seed: int, max_tokens: int) -> None:
+    """Run native experimental techniques (plan: candidate status → experimental, never scored). B23 constrained
+    decoding runs only when recon saw structured-output support; its reproduce verdict is recorded, not graded (16.7)."""
+    structured = profile is not None and getattr(profile, "has", lambda _n: None)("structured_output") is True
+    for step in plan.steps:
+        if step.disposition != "experimental" or step.catalog_id != "B23":
+            continue
+        if not structured:
+            res.decide("S4", "B23", "n/a", "target does not honour structured output", advisory=True)
+            continue
+        from hfsentinel.attacks.cda import run_cda
+        r = run_cda(target, seed=seed, max_tokens=max_tokens)
+        res.requests += r.trials
+        res.experimental.append({"id": "B23", "trials": r.trials, "hits": r.hits, "reproduced": r.reproduced,
+                                 "verdict": r.verdict})
+        res.decide("S4", "B23", f"experimental: {'reproduced' if r.reproduced else 'not reproduced'}",
+                   r.verdict, advisory=True)
 
 
 def _judge_confirm(res: CampaignResult, panel, s1, candidates: list, *, policy=None) -> None:

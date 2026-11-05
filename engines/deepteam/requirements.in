@@ -1,0 +1,4 @@
+deepteam==1.0.10
+# deepteam/deepeval import sentry_sdk at import time without declaring it; pinned here so the image imports.
+# Telemetry is disabled (DEEPEVAL_TELEMETRY_OPT_OUT=YES) and egress is enforced by the allow-list proxy (16.12).
+sentry-sdk

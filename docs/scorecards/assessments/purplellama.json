@@ -1,0 +1,50 @@
+{
+  "tool": "guard-suite (llamafirewall 1.0.3, codeshield 1.0.1)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 2,
+      "evidence": "CodeShield for E2; LlamaFirewall for S7 differential and agent-trace alignment checks"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 1,
+      "evidence": "Scans our captured outputs; not a target client"
+    },
+    "Dynamic / adaptive": {
+      "score": 0,
+      "evidence": "Scanning only"
+    },
+    "Multi-turn": {
+      "score": 0,
+      "evidence": "Per-snippet"
+    },
+    "Agent/tool observation": {
+      "score": 1,
+      "evidence": "LlamaFirewall alignment check reads agent traces (not exercised yet)"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 1,
+      "evidence": "CodeShield: caught weak hashes, missed CWE-78 shell sinks in 4/4 cases"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 2,
+      "evidence": "New semgrep rule ~1 h"
+    },
+    "Output format": {
+      "score": 2,
+      "evidence": "Scan result objects"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "Needed build-time symlink warmup for read-only FS; 5 reasoned dependency waivers"
+    },
+    "Health (license, release, activity)": {
+      "score": 2,
+      "evidence": "codeshield 2024-04, llamafirewall 2025-05"
+    }
+  },
+  "decision": "Adopt for categories: owns the insecure-code scanner (E2, combined with our sink rules) and the guardrail differential (S7)",
+  "notes": [
+    "E2 oracle = CodeShield plus dedicated sink rules (shell exec, string-built SQL, unsafe deserialization)."
+  ]
+}

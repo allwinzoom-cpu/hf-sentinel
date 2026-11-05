@@ -1,0 +1,52 @@
+{
+  "tool": "agent-bench (AgentDojo 0.1.35)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 2,
+      "evidence": "Indirect injection in tool environments: D1, D2, D3, D7 style; 4 suites, 97 tasks"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 1,
+      "evidence": "CLI hard-codes localhost for custom models; Python API works with HF router"
+    },
+    "Dynamic / adaptive": {
+      "score": 1,
+      "evidence": "Fixed attack templates"
+    },
+    "Multi-turn": {
+      "score": 3,
+      "evidence": "Multi-step tool loops"
+    },
+    "Agent/tool observation": {
+      "score": 3,
+      "evidence": "Deterministic utility and security checks from environment state"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 3,
+      "evidence": "Deterministic oracle (no LLM judge)"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 2,
+      "evidence": "New injection task ~2 h"
+    },
+    "Output format": {
+      "score": 2,
+      "evidence": "SuiteResults dicts; we emit shared case JSON"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "Needs ambient OutputLogger, recognised model label; some providers reject tool-result turns"
+    },
+    "Health (license, release, activity)": {
+      "score": 2,
+      "evidence": "Release 2025-10-27; repo push 2026-06"
+    }
+  },
+  "decision": "Adopt for categories: owns stateful agent environments with deterministic oracles and baseline/attack arms",
+  "notes": [
+    "gpt-oss-120b agent: injection succeeded while user task still completed (1 trial).",
+    "Tool-calling target must be probed per provider before use.",
+    "Vuln-target run N/A: it has no tool calling (Section 4.0 precondition); evaluated on a tool-calling reference endpoint only."
+  ]
+}

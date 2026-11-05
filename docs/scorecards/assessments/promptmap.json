@@ -1,0 +1,51 @@
+{
+  "tool": "extractor (promptmap2 @432e072)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 1,
+      "evidence": "Prompt-stealing rule corpus: C1 (also A1/B rule sets)"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 2,
+      "evidence": "openai mode via OPENAI_BASE_URL; HTTP mode for raw endpoints"
+    },
+    "Dynamic / adaptive": {
+      "score": 1,
+      "evidence": "Static rule set"
+    },
+    "Multi-turn": {
+      "score": 0,
+      "evidence": "Single-turn"
+    },
+    "Agent/tool observation": {
+      "score": 0,
+      "evidence": "No tool-call observation"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 1,
+      "evidence": "Payloads extracted canary 11/11 on vuln target, but tool verdict was UNCERTAIN 0/11 in HTTP mode"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 3,
+      "evidence": "New rule = one YAML file"
+    },
+    "Output format": {
+      "score": 2,
+      "evidence": "results.json per rule"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "HTTP mode defaults verify_ssl=False; we force true"
+    },
+    "Health (license, release, activity)": {
+      "score": 2,
+      "evidence": "Last commit 2025-12-01"
+    }
+  },
+  "decision": "Borrow: use its C1 payload corpus, score with our canary oracle",
+  "notes": [
+    "Owns the prompt-extraction payload corpus.",
+    "Never install from PyPI 'promptmap' (unrelated package)."
+  ]
+}

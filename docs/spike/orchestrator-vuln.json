@@ -1,0 +1,52 @@
+{
+  "label": "orchestrator-vuln",
+  "engine": "pyrit",
+  "tool_version": "1.1.0",
+  "repo": "microsoft/PyRIT",
+  "image": "hfsentinel-engine-orchestrator:amd64",
+  "image_id": "sha256:c5d17df2d0c9e75a5a147d49a2c0ad5bf11d18e743b1350315965ccb2d9213f5",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/orchestrator.py",
+    "/out/orchestrator-vuln.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T01:03:23+00:00",
+  "duration_s": 6.0,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 0,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 6,
+    "user_agents": [
+      "AsyncOpenAI/Python 3.42.1"
+    ],
+    "header_names": [
+      "accept",
+      "accept-encoding",
+      "authorization",
+      "connection",
+      "content-length",
+      "content-type",
+      "host",
+      "user-agent",
+      "x-stainless-arch",
+      "x-stainless-async",
+      "x-stainless-lang",
+      "x-stainless-os",
+      "x-stainless-package-version",
+      "x-stainless-read-timeout",
+      "x-stainless-retry-count",
+      "x-stainless-runtime",
+      "x-stainless-runtime-version"
+    ],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=orchestrator techniques=3 successes=2 errors=0"
+}

@@ -1,0 +1,17 @@
+{
+  "alias": "guard-suite",
+  "features": {
+    "scanner_types": [
+      "AGENT_ALIGNMENT",
+      "CODE_SHIELD",
+      "HIDDEN_ASCII",
+      "PII_DETECTION",
+      "PROMPT_GUARD",
+      "REGEX"
+    ],
+    "code_scanner": [
+      "CodeShield.scan_code"
+    ]
+  },
+  "version": "1.0.3"
+}

@@ -1,0 +1,32 @@
+{
+  "label": "agent-bench-common",
+  "engine": "agentdojo",
+  "tool_version": "0.1.35",
+  "repo": "ethz-spylab/agentdojo",
+  "image": "hfsentinel-engine-agent-bench:amd64",
+  "image_id": "sha256:043d7ff96f66c51931c99d78f45988f87845917cf9d50913d5fad3cfbc72b51d",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/agent-bench.py",
+    "/out/agent-bench-common.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T01:03:29+00:00",
+  "duration_s": 43.5,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 1,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 0,
+    "user_agents": [],
+    "header_names": [],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=agent-bench techniques=1 successes=1 errors=0"
+}

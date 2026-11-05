@@ -1,0 +1,32 @@
+{
+  "label": "guard-suite-common",
+  "engine": "purplellama",
+  "tool_version": "1.0.3",
+  "repo": "meta-llama/PurpleLlama",
+  "image": "hfsentinel-engine-guard-suite:amd64",
+  "image_id": "sha256:0c69e18c88c82e786b9458c12f67442afe37e57dacd2c8882a5cf576ef413a76",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/guard-suite.py",
+    "/out/guard-suite-common.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T05:39:59+00:00",
+  "duration_s": 54.3,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 3,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 0,
+    "user_agents": [],
+    "header_names": [],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=guard-suite techniques=1 successes=1 errors=0"
+}

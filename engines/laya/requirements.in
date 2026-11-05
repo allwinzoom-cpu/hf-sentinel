@@ -1,0 +1,6 @@
+# Laya System-1 decision layer (plan 16.19, D-013 CPU-only). ModernBERT encoder + from-scratch decision head.
+# CPU-only torch; locked with --exclude-newer (every artifact >= 2 weeks old).
+torch==2.14.1
+transformers==5.20.2
+safetensors==0.8.0
+numpy==2.3.4

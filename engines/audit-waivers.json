@@ -1,0 +1,32 @@
+{
+  "_comment": "OSV findings accepted per engine, each with a concrete reachability reason and an expiry (max 90 days). build.py fails on any finding not listed here or past expiry. Re-evaluate on every relock.",
+  "waivers": {
+    "purplellama": {
+      "CVE-2026-114603": {
+        "package": "opentelemetry-api",
+        "reason": "Unbounded W3C tracestate parsing = DoS on inbound trace headers. Fix (>=1.45.1) is unsatisfiable: semgrep 1.183 (required by codeshield 1.0.1) pins opentelemetry-api<1.38. Image runs no HTTP server, semgrep metrics/telemetry disabled, judge runs use --network none.",
+        "expires": "2027-01-31"
+      },
+      "CVE-2026-59951": {
+        "package": "mcp",
+        "reason": "Unbounded session accumulation in the MCP StreamableHTTP SERVER transport (fixed in 2.2.0). semgrep 1.183 (required by codeshield 1.0.1) pins mcp==1.29.0 exactly, so no fixed mcp is installable without a 100+-release-old semgrep. mcp is only reachable via the optional `semgrep mcp` client/server subcommands; CodeShield invokes `semgrep scan` only, and judge runs use --network none. Our Phase 4 mock-tool MCP servers use a separate image with mcp>=2.2.0.",
+        "expires": "2027-01-31"
+      },
+      "CVE-2026-116684": {
+        "package": "mcp",
+        "reason": "server bearer-token acceptance. semgrep 1.183 (required by codeshield 1.0.1) pins mcp==1.29.0 exactly, so no fixed mcp is installable without a 100+-release-old semgrep. mcp is only reachable via the optional `semgrep mcp` client/server subcommands; CodeShield invokes `semgrep scan` only, and judge runs use --network none.",
+        "expires": "2027-01-31"
+      },
+      "CVE-2026-116685": {
+        "package": "mcp",
+        "reason": "HTTP client cross-origin redirects. semgrep 1.183 (required by codeshield 1.0.1) pins mcp==1.29.0 exactly, so no fixed mcp is installable without a 100+-release-old semgrep. mcp is only reachable via the optional `semgrep mcp` client/server subcommands; CodeShield invokes `semgrep scan` only, and judge runs use --network none.",
+        "expires": "2027-01-31"
+      },
+      "CVE-2026-116686": {
+        "package": "mcp",
+        "reason": "client fetch of server-chosen $ref URLs. semgrep 1.183 (required by codeshield 1.0.1) pins mcp==1.29.0 exactly, so no fixed mcp is installable without a 100+-release-old semgrep. mcp is only reachable via the optional `semgrep mcp` client/server subcommands; CodeShield invokes `semgrep scan` only, and judge runs use --network none.",
+        "expires": "2027-01-31"
+      }
+    }
+  }
+}

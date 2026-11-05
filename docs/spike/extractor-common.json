@@ -1,0 +1,32 @@
+{
+  "label": "extractor-common",
+  "engine": "promptmap",
+  "tool_version": "432e072ae654788ad5b30172d42f3b1bcbda21cf",
+  "repo": "utkusen/promptmap",
+  "image": "hfsentinel-engine-extractor:amd64",
+  "image_id": "sha256:39e97aed848717a375a853dab990aa3250452f19ca354597da030545c784ca64",
+  "command": [
+    "python",
+    "/opt/hfsentinel-adapters/extractor.py",
+    "/out/extractor-common.job.json"
+  ],
+  "env": {},
+  "started_utc": "2026-11-03T00:59:45+00:00",
+  "duration_s": 26.5,
+  "exit_code": 0,
+  "egress": {
+    "allowed_connections": 5,
+    "denied": [],
+    "allowlist": [
+      "router.huggingface.co",
+      "huggingface.co"
+    ]
+  },
+  "target_view": {
+    "requests": 0,
+    "user_agents": [],
+    "header_names": [],
+    "tool_fingerprint_leaks": []
+  },
+  "output_excerpt": "adapter=extractor techniques=1 successes=0 errors=0"
+}

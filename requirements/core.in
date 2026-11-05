@@ -1,0 +1,5 @@
+pydantic==2.13.4
+PyYAML==6.0.3
+typer==0.27.3
+cryptography==50.0.2
+urllib3==2.8.0

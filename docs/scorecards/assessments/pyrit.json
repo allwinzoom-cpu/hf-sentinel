@@ -1,0 +1,51 @@
+{
+  "tool": "orchestrator (PyRIT 1.1.0)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 2,
+      "evidence": "Multi-turn attacks (Crescendo, PAIR, TAP) and converters: B2, B4, B7, B13"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 3,
+      "evidence": "OpenAIChatTarget reached HF router and vuln target"
+    },
+    "Dynamic / adaptive": {
+      "score": 3,
+      "evidence": "Adaptive attack executors available"
+    },
+    "Multi-turn": {
+      "score": 3,
+      "evidence": "Native conversation memory"
+    },
+    "Agent/tool observation": {
+      "score": 0,
+      "evidence": "No tool-call observation"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 2,
+      "evidence": "SubStringScorer matched ground truth 3/3 on vuln target; 50-item precision pending"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 2,
+      "evidence": "Estimate ~2 h per converter/attack class"
+    },
+    "Output format": {
+      "score": 2,
+      "evidence": "Python result objects; we emit shared case JSON"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "amd64 only (base2048 has no arm64 wheel); converters module moved in 1.1.0"
+    },
+    "Health (license, release, activity)": {
+      "score": 3,
+      "evidence": "Release 2026-09-04, active"
+    }
+  },
+  "decision": "Adopt as adaptive engine: owns composable converters and multi-turn search",
+  "notes": [
+    "Owns encoding/mutation; garak and deepteam encodings not used.",
+    "API churn risk: pin version, keep adapter thin."
+  ]
+}

@@ -1,0 +1,14 @@
+# Deps of dsbowen/strong_reject@7a551d5 pyproject.toml; the package is fetched as the sha256-pinned tarball
+# and imported from that verified tree via a .pth entry (no build step).
+datasets
+google-cloud-translate
+google-api-python-client
+litellm
+numpy
+openai
+pandas
+peft
+python-dotenv
+sentencepiece
+torch
+transformers

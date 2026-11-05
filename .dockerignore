@@ -1,0 +1,18 @@
+# Default-deny build context: only what the Dockerfile COPYs is allowed in.
+*
+!hfsentinel/
+!config/
+!requirements/
+!engines/
+!docs/spike/
+!docs/judges/
+!tests/
+!calibration/
+!pyproject.toml
+!test_plan.py
+!hf-llm-security-scanner-project-plan.md
+# Never ship secrets or local state, even if nested.
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc

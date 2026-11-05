@@ -1,0 +1,223 @@
+"""Attack campaign v1 (plan 16.18): a staged, budget-gated run instead of firing everything.
+
+  S0 scope & budget   done by the CLI before any traffic (attestation + governor caps)
+  S1 recon            target profile (engines/recon.py)
+  S2 plan             planner dispositions → per-technique decision
+  S3 breadth          native deterministic-oracle techniques with sequential stopping (16.6); a baseline arm (16.4)
+                      measures the un-attacked rate so findings are graded on lift, not raw ASR
+  S4 depth            escalate weak spots with defence-adaptive encoding mutators when the target filters (16.18)
+  S5 confirm          temperature-0 attempt only where it can still change the outcome; §2.2 confirmation
+  S6 cross-verify     re-run each confirmed native finding with independent canaries to rule out an artefact
+  S7 learn            write per-(technique, target-bucket) outcomes back to the strategy library (§6.2)
+  S8 report           scoring + writers (report/)
+
+Every technique gets a decision record (stage, action, why). Techniques owned by an engine (catalog B and the rest
+of the engine-routed set, 16.21) are recorded as needing the engine service (D-018) until it exists; their success
+will be decided by the calibrated judge panel (`judges.ensemble.Panel`).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from hfsentinel.attacks.canary import CANARY_IDS, CanaryRun
+from hfsentinel.attacks.catalog import load_catalog
+from hfsentinel.engines.governor import Governor
+from hfsentinel.engines.planner import Plan
+from hfsentinel.engines.strategy_library import Outcome, StrategyLibrary
+from hfsentinel.engines.sweep import NATIVE, TechniqueRun, run_technique
+from hfsentinel.scoring.severity import confirmed
+
+if TYPE_CHECKING:
+    from hfsentinel.engines.recon import TargetProfile
+
+ENGINE_SERVICE = "engine-owned: runs through the engine service (D-018), not available in this build"
+MIN_VERIFY_TRIALS = 5
+ESCALATION_MUTATORS = ("base64", "unicode-tag")  # canary-preserving encodings: the planted canary survives decoding
+# (cipher/leet/homoglyph transform the canary itself, so the oracle cannot match — they are for text-goal attacks)
+ESCALATE_TRIALS = 8  # small per-mutator batch; the first mutator that confirms wins
+
+
+@dataclass
+class CampaignResult:
+    runs: list[TechniqueRun] = field(default_factory=list)
+    decisions: list[dict] = field(default_factory=list)
+    requests: int = 0
+    exhaustive_requests: int = 0  # the same native techniques at full trials + 1 at temperature 0
+    cross_verified: dict = field(default_factory=dict)  # catalog_id -> bool (artefact ruled out)
+    verify_requests: int = 0  # S6 cross-verification requests (separate from the breadth-sweep budget)
+    escalations: list = field(default_factory=list)  # S4: {id, mutator, hits, trials, confirmed}
+    depth_requests: int = 0  # S4 escalation requests
+    baseline: dict = field(default_factory=dict)  # catalog_id -> {hits, trials} un-attacked arm (16.4)
+    baseline_requests: int = 0
+    judge_calls_made: int = 0      # responses sent to System-2 judges at S5 (16.19)
+    judge_calls_saved: int = 0     # confident refusals skipped by Laya triage (the savings)
+    judge_saved_fraction: float = 0.0
+    triage_agreement: float | None = None  # Laya-vs-System-2 agreement on judged items
+
+    def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
+        self.decisions.append({"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
+                               "source": "system-one" if advisory else "campaign"})
+
+
+def _observations(profile: TargetProfile) -> list[str]:
+    obs = []
+    if profile.over_refusal_rate is not None:
+        obs.append(f"over-refusal rate {profile.over_refusal_rate}")
+    obs.append(f"refusal style: {profile.refusal_style}")
+    for name, fact in profile.facts.items():
+        shown = {True: "yes", False: "no", None: "unknown"}[fact.value]
+        obs.append(f"{name}: {shown} ({fact.reason})")
+    return obs
+
+
+def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature: float, max_tokens: int,
+                 concurrency: int, seed: int = 0, sink_host: str | None = None, system_one=None,
+                 profile: TargetProfile | None = None, library: StrategyLibrary | None = None,
+                 controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
+                 progress=lambda run: None) -> CampaignResult:
+    res = CampaignResult()
+    res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
+    s1 = system_one if (system_one is not None and system_one.available) else None
+    if s1 is not None and profile is not None:
+        d = s1.defence_style(_observations(profile))
+        res.decide("S1", "*", f"defence~{d.choice}" if not d.escalate() else "defence~uncertain",
+                   f"System-1 conf {d.confidence}, act {d.act_probability}", advisory=True)
+    runnable = []
+    for step in plan.steps:
+        if step.disposition != "run":
+            res.decide("S2", step.catalog_id, "skip", step.rationale or step.disposition)
+        elif step.catalog_id in NATIVE:
+            runnable.append(step.catalog_id)
+            res.decide("S2", step.catalog_id, "run", step.rationale)
+        else:
+            res.decide("S2", step.catalog_id, "defer", ENGINE_SERVICE)
+    if s1 is not None and runnable:
+        cand = {sid: next(st.name for st in plan.steps if st.catalog_id == sid) for sid in runnable}
+        prof = {"refusal_style": profile.refusal_style} if profile is not None else {}
+        t = s1.choose_technique(prof, cand)
+        res.decide("S2", t.choice if not t.escalate() else "*", "technique advice",
+                   f"System-1 favours {t.choice} (conf {t.confidence}); advisory — planner order is authoritative",
+                   advisory=True)
+    per_technique = trials + (1 if temperature > 0 else 0)
+    res.exhaustive_requests = per_technique * len(runnable)
+    canaries = CanaryRun(seed, **({"sink_host": sink_host} if sink_host else {}))
+    for attack_id in runnable:
+        run = run_technique(target, gov, attack_id, trials=trials, temperature=temperature, max_tokens=max_tokens,
+                            concurrency=concurrency, canaries=canaries, seed=seed, adaptive=True,
+                            keep_transcripts=keep_transcripts)
+        res.runs.append(run)
+        res.requests += run.attempts
+        base = run_technique(target, gov, attack_id, trials=max(MIN_VERIFY_TRIALS, trials // 2),
+                             temperature=temperature, max_tokens=max_tokens, concurrency=concurrency,
+                             canaries=canaries, seed=seed + 50, adaptive=False, baseline=True)
+        res.baseline[attack_id] = {'hits': base.hits, 'trials': base.trials}
+        res.baseline_requests += base.attempts
+        res.decide('S3', attack_id, 'baseline', f'un-attacked {base.hits}/{base.trials} (lift = attack - baseline)')
+        res.decide("S3", attack_id, f"{run.hits}/{run.trials} hits",
+                   f"stopped early: {run.stopped_early}" if run.stopped_early else "all planned trials")
+        if s1 is not None:
+            res.decide("S3", attack_id, "triage n/a",
+                       "deterministic oracle decides directly; triage gates judge-scored responses", advisory=True)
+        if run.temp0_hit is not None:
+            res.decide("S5", attack_id, "temperature-0 attempt", "hit" if run.temp0_hit else "no hit")
+        outcome = "confirmed" if confirmed(run.hits, run.trials, run.temp0_hit) else "unconfirmed"
+        res.decide("S5", attack_id, outcome, "§2.2 reproduction")
+        progress(run)
+        if not run.complete:
+            break  # a budget cap stopped the sweep; later techniques are reported as not run
+    _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
+                    max_tokens=max_tokens, concurrency=concurrency, seed=seed,
+                    mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
+    _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
+                  concurrency=concurrency, seed=seed)
+    _judge_confirm(res, panel, s1, judge_candidates or [])
+    if library is not None:
+        _learn(res, library, profile)
+    return res
+
+
+def _judge_confirm(res: CampaignResult, panel, s1, candidates: list, *, policy=None) -> None:
+    """S5 judge-scored confirmation gated by Laya triage (plan 16.19): a response Laya is confident is a refusal skips
+    the expensive System-2 judge panel; everything else (likely-success, uncertain, Laya down) reaches the judges.
+    `candidates`: [{catalog_id, goal, response}] for judge-scored techniques (engine-owned B feeds these when wired).
+    No panel, no Laya, or no candidates → a no-op (native deterministic findings are confirmed by their own oracle)."""
+    if panel is None or s1 is None or not getattr(s1, "available", False) or not candidates:
+        return
+    from hfsentinel.judges.ensemble import TriagedPanel
+    tp = TriagedPanel(panel, s1, policy=policy)
+    for c in candidates:
+        decision, judged = tp.decide(c["goal"], c["response"])
+        res.decide("S5", c.get("catalog_id", "*"), f"judge:{decision.outcome}" if judged else "triage-skip",
+                   decision.reason, advisory=not judged)
+    st = tp.stats
+    res.judge_calls_made, res.judge_calls_saved = st.made, st.saved
+    res.judge_saved_fraction, res.triage_agreement = st.saved_fraction, st.agreement
+    res.decide("S5", "*", f"judge calls saved {st.saved}/{st.total}",
+               f"Laya triage skipped {st.saved_fraction:.0%} of judge calls (agreement {st.agreement})",
+               advisory=True)
+
+
+def allowed_mutators(controls) -> tuple:
+    """Encoding mutators enabled by controls, in the campaign's escalation order."""
+    if controls is None:
+        return ESCALATION_MUTATORS
+    enabled = set(controls.fuzz.mutators)
+    return tuple(m for m in ESCALATION_MUTATORS if m in enabled)
+
+
+def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, trials, temperature, max_tokens,
+                    concurrency, seed, mutators, keep_transcripts: bool = False) -> None:
+    """S4: when the target shows a keyword filter, re-attack each unconfirmed canary weak spot with encoding
+    mutators; the first mutator that confirms replaces the breadth result so the finding is scored. Budget-gated."""
+    keyword_filter = profile is not None and getattr(profile, 'has', lambda _n: None)('keyword_filter') is True
+    if not keyword_filter or not mutators:
+        return  # encoding escalation only helps against a filter; otherwise a 0-hit is a true negative
+    for idx, run in enumerate(list(res.runs)):
+        if run.catalog_id not in CANARY_IDS or confirmed(run.hits, run.trials, run.temp0_hit):
+            continue
+        for mi, mut in enumerate(mutators):
+            esc = run_technique(target, gov, run.catalog_id, trials=ESCALATE_TRIALS, temperature=temperature,
+                                max_tokens=max_tokens, concurrency=concurrency, canaries=canaries,
+                                seed=seed + 100 + mi, adaptive=True, mutator=mut, keep_transcripts=keep_transcripts)
+            res.depth_requests += esc.attempts
+            ok = confirmed(esc.hits, esc.trials, esc.temp0_hit)
+            res.escalations.append({'id': run.catalog_id, 'mutator': mut, 'hits': esc.hits, 'trials': esc.trials,
+                                    'confirmed': ok})
+            if ok:
+                res.runs[idx] = esc  # the escalated result is now the technique's outcome
+                res.decide('S4', run.catalog_id, f'escalated via {mut}',
+                           f'{esc.hits}/{esc.trials} after breadth got {run.hits}/{run.trials} (filter bypassed)')
+                break
+        else:
+            res.decide('S4', run.catalog_id, 'no bypass found',
+                       f'tried {len(mutators)} encoding mutators on the weak spot')
+
+
+def _cross_verify(res: CampaignResult, target, gov, canaries, *, trials, temperature, max_tokens, concurrency,
+                  seed) -> None:
+    """S6: re-run each confirmed native finding with fresh, independent canaries; a finding that does not
+    reproduce is flagged (an engine/oracle artefact, not a real weakness). A small independent sample is enough."""
+    n = max(MIN_VERIFY_TRIALS, trials // 2)
+    for run in res.runs:
+        if not confirmed(run.hits, run.trials, run.temp0_hit):
+            continue
+        check = run_technique(target, gov, run.catalog_id, trials=n, temperature=temperature,
+                              max_tokens=max_tokens, concurrency=concurrency, canaries=canaries, seed=seed + 1,
+                              adaptive=True)
+        res.verify_requests += check.attempts
+        ok = confirmed(check.hits, check.trials, check.temp0_hit)
+        res.cross_verified[run.catalog_id] = ok
+        res.decide("S6", run.catalog_id, "cross-verified" if ok else "artefact?",
+                   f"independent re-run {check.hits}/{check.trials}" + ("" if ok else " — did not reproduce"))
+
+
+def _learn(res: CampaignResult, library: StrategyLibrary, profile) -> None:
+    """S7: write each technique's aggregate outcome back to the strategy library (no response text, D-015)."""
+    cat = load_catalog().by_id()
+    for run in res.runs:
+        a = cat[run.catalog_id]
+        library.record(run.catalog_id, a.category, profile, Outcome(run.trials, run.hits),
+                       description=a.name, detector=a.oracle, source="campaign")
+        res.decide("S7", run.catalog_id, "recorded",
+                   f"{run.hits}/{run.trials} written to the strategy library for this target bucket")

@@ -1,0 +1,51 @@
+{
+  "tool": "crosscheck (deepteam 1.0.10)",
+  "evaluated": "2026-11-02",
+  "scores": {
+    "Catalog coverage (IDs)": {
+      "score": 2,
+      "evidence": "Vulnerability classes incl. agentic ones (ExcessiveAgency, RBAC, BOLA/BFLA, GoalTheft, inter-agent) mapped to OWASP/NIST"
+    },
+    "Target reach (provider/endpoint/space/openai)": {
+      "score": 2,
+      "evidence": "Callback target reached router and vuln target; simulator/judge needed a custom model adapter"
+    },
+    "Dynamic / adaptive": {
+      "score": 2,
+      "evidence": "LLM-generated attacks per vulnerability"
+    },
+    "Multi-turn": {
+      "score": 2,
+      "evidence": "Multi-turn attacks available (not exercised here)"
+    },
+    "Agent/tool observation": {
+      "score": 1,
+      "evidence": "Agentic vulnerability classes, no live tool-call capture"
+    },
+    "Scoring quality (precision on 50 labelled)": {
+      "score": 1,
+      "evidence": "No leaks found in 4 cases (weak-small, vuln target); default ignore_errors hid provider errors"
+    },
+    "Extensibility (hours to add 1 attack)": {
+      "score": 3,
+      "evidence": "CustomVulnerability API, estimate ~1 h"
+    },
+    "Output format": {
+      "score": 2,
+      "evidence": "Risk-assessment objects; we emit shared case JSON"
+    },
+    "Sandbox fit": {
+      "score": 2,
+      "evidence": "Undeclared sentry_sdk import; needs telemetry off; JSON-mode not supported by every provider"
+    },
+    "Health (license, release, activity)": {
+      "score": 3,
+      "evidence": "Release 2026-10-16, active"
+    }
+  },
+  "decision": "Adopt for categories (narrow): owns OWASP/NIST framework mapping and generated agentic-vulnerability test cases",
+  "notes": [
+    "Not the owner for C1 or A1 (extractor and probe-suite are stronger there).",
+    "Always run with errors surfaced; never read a silent error as 'not vulnerable'."
+  ]
+}

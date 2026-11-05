@@ -1,0 +1,4 @@
+# Security floors applied to EVERY engine/tools lock (engines/lock.py passes this as --constraint).
+# Add a floor when OSV reports a fixed version; never pin below a fix. Each line: package>=fixed  # advisory
+filelock>=4.2.1  # CVE-2026-112907..112940 (13 OSV advisories, fixed in 4.2.1)
+semgrep>=1.183.0  # never let a security floor silently downgrade CodeShield's analyzer

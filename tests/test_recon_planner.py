@@ -112,10 +112,10 @@ def test_recon_vuln_target():
     finally:
         srv.shutdown()
     assert facts(prof) == {"keyword_filter": True, "non_english": False, "system_prompt": False,
-                           "multi_turn_memory": False, "structured_output": False, "tool_calling": False,
+                           "multi_turn_memory": False, "structured_output": True, "tool_calling": False,
                            "prefill": False, "special_token_parsing": None, "multimodal_input": False,
-                           "cross_session_memory": False, "reasoning_trace": False}
-    assert prof.facts["structured_output"].reason == "ignored"  # accepted the field, did not enforce it
+                           "cross_session_memory": False, "reasoning_trace": False}  # honours response_format (B23)
+    assert prof.facts["structured_output"].reason == "enforced"  # output conformed to the response_format schema (B23)
     assert prof.facts["special_token_parsing"].reason == "no_usage"
     assert prof.over_refusal_rate == 1.0 and prof.refusal_style == "templated"
     assert prof.max_tokens_accepted == 4096 and prof.requests <= 18
@@ -255,7 +255,9 @@ def test_cli_recon_on_vuln_target_and_plan():
     out = res.output
     assert res.exit_code == cli.EXIT_OK, out
     assert re.search(r"tool_calling\s+no\s+no_tool_call", out) and "recon     profile applied" in out
-    assert re.search(r"^\s*\d+ D1\s+n/a\s", out, re.MULTILINE) and re.search(r"^\s*\d+ B23\s+n/a\s", out, re.MULTILINE)
+    # structured_output is detected on the vuln target, so B23's precondition is met → experimental (candidate)
+    assert re.search(r"^\s*\d+ D1\s+n/a\s", out, re.MULTILINE)
+    assert re.search(r"^\s*\d+ B23\s+experimental\s", out, re.MULTILINE)
 
 
 def test_cli_recon_refuses_unapproved_targets(monkeypatch):

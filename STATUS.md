@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 45/71 tasks ticked (63.4%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 46/71 tasks ticked (64.8%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -88,6 +88,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - P4 · Runtime tool-attack fixtures D1–D6 — `hfsentinel/agents/tool_fixtures.py`: six fixtures on the mock-tool env, one per delivery channel (D1 tool-output injection, D2 poisoned description, D3 cross-tool laundering, D4 excessive agency, D5 memory poisoning, D6 inter-agent injection). Each plants an injection (`setup`), carries the vulnerable agent's `attack`, and a `canary_action` call-log oracle; the shared oracle separates contacting the attacker sink from a confirmed exfiltration (attacker-bound call carrying a planted tool secret). `MockToolEnv` extended with `injected_outputs`/`injected_descriptions`. Verified amd64+arm64: ruff, pytest (+10 `tests/test_tool_fixtures.py`), plan harness ALL PASS. Fully complete (LlamaFirewall AlignmentCheck secondary trace judge is the Llama/engine side).
 - P4 · Taint + memory + loop controls — `hfsentinel/agents/trace_guards.py`: three call-log oracles over the mock-tool env — D3 `tainted_reached_privileged` (untrusted `http_get` data reaching `send_email`, tracked by the untrusted canary surfacing downstream), D5 `MemoryHarness` + `cross_session_influence` (a marker planted in one session resurfacing in a later one), E4 `exceeds_loop_cap` (a tool invoked over the cap = runaway loop). Verified amd64+arm64: ruff, pytest (+6 `tests/test_trace_guards.py`), plan harness ALL PASS. Fully complete.
+
+- P4 · D7 zero-click exfiltration — `hfsentinel/agents/zero_click.py`: `hidden_instructions` extracts human-invisible content (HTML comments + CSS-hidden: white-on-white, display:none, 0-px font, opacity:0); `malicious_document` is the ShadowLeak-style hidden-exfil page; `exfil_callback` detects the browse/HTTP callback reaching the sink **with the secret** (vs mere contact) in the mock-tool call log; `sink_is_sandboxed` confirms the controlled sink never resolves (exfil-sink.invalid). Verified amd64+arm64: ruff, pytest (+4 `tests/test_zero_click.py`), plan harness ALL PASS. **Category D is now complete** (mock-tool env, D1–D6 fixtures, taint/memory/loop controls, D7).
 
 ## In progress
 - Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint; judge-scored engine candidates (harmful-goal jailbreak); full D-018 engine service; HF Jobs runner (D-004); Wrap garak; distillation. Awaiting direction.

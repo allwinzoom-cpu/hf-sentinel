@@ -341,8 +341,9 @@ def write(report: Report, out_dir: Path, formats: list[str], *, anchor: str = "s
     out_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     if out_dir.is_symlink() or not out_dir.is_dir():
         raise OSError("report directory is not a plain directory")
+    from hfsentinel.report.model_card import model_card  # local import: model_card imports render helpers
     renderers = {"json": ("json", to_json), "sarif": ("sarif", lambda r: to_sarif(r, anchor=anchor)),
-                 "md": ("md", to_markdown), "html": ("html", to_html)}
+                 "md": ("md", to_markdown), "html": ("html", to_html), "card": ("modelcard.md", model_card)}
     stem = f"hfsentinel-{report.run['run_id']}"
     written = []
     for fmt in formats:

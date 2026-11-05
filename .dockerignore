@@ -6,6 +6,7 @@
 !engines/
 !docs/spike/
 !docs/judges/
+!docs/coverage.md
 !tests/
 !calibration/
 !pyproject.toml

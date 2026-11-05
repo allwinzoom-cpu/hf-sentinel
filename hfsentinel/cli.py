@@ -51,7 +51,7 @@ from hfsentinel.targets.resolve import resolve as resolve_target
 
 EXIT_OK, EXIT_INTERNAL, EXIT_USAGE, EXIT_SCOPE, EXIT_INPUT, EXIT_UNSUPPORTED, EXIT_HUB = 0, 1, 2, 3, 4, 5, 6
 EXIT_FINDINGS = 10
-WRITABLE_FORMATS = ("json", "sarif", "md", "html")  # html: safe per-sink encoding + CSP (16.5)
+WRITABLE_FORMATS = ("json", "sarif", "md", "html", "card")  # html: 16.5 safe encoding; card: model-card snippet
 MAX_REPORT_BYTES = 10_000_000
 
 app = typer.Typer(name="hfsentinel", help="HF-Sentinel — dynamic black-box LLM security testing (authorized targets "
@@ -308,7 +308,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          max_minutes: Annotated[int | None, _opt("Wall-clock cap.", BUD)] = None,
          max_requests: Annotated[int | None, _opt("Request cap.", BUD)] = None,
          out: Annotated[Path | None, _opt("Report directory.", BUD)] = None,
-         formats: Annotated[str | None, _opt("md,json,sarif,html.", BUD, "--format")] = None,
+         formats: Annotated[str | None, _opt("md,json,sarif,html,card.", BUD, "--format")] = None,
          push_to: Annotated[str | None, _opt("Private HF dataset repo for reports.", BUD)] = None,
          fail_on: Annotated[str | None, _opt("critical | high | medium.", BUD)] = None,
          save_transcripts: Annotated[bool | None, _opt("Keep full transcripts of confirmed findings only.", BUD,

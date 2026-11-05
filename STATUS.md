@@ -5,7 +5,7 @@
 (enforced by `tests/test_catalog.py::test_catalog_is_dynamic_black_box_only`).
 **Sacred rule (per task, no exceptions):** review → re-evaluate (research) → add enhancements to the task in the plan →
 build → verify in Linux containers (D-009) → tick + log here.
-**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 41/71 tasks ticked (57.7%)
+**Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 42/71 tasks ticked (59.2%)
 
 ## Done
 - (baseline) `test_plan.py` 17/17 green.
@@ -81,6 +81,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 - P3 · Strategy library + pipeline (6.2) — the durable record (engines/strategy_library.py) already had §6.2 records + shrunk priors + retrieval/write-back; this adds the pipeline (hfsentinel/attacks/strategy_lib.py): the generate/succeeded contract (`Strategy`), a reproduce-before-trust gate (`ReproResult.reproduced` = §2.2; `learn_if_reproduced` writes back only when reproduced), and composition search (`search_compositions` stacks mutators, keeps only transforms that pass the reproduce gate, ranked by ASR). Verified amd64+arm64: ruff, pytest (+4 `tests/test_strategy_pipeline.py`: gate trusts stable/rejects flaky, search finds only the working transform, reproduced strategy stored+retrieved for a similar target, non-reproduced not stored), plan harness ALL PASS. Fully complete.
 
 - P3 · H3/H4 NLI contradiction oracle — `hfsentinel/halluc/nli.py`: splits an answer into claims and scores each against the ground truth with NLI; a contradicted claim is a hallucination (H3 false-premise following + H4 snowball both surface this way). Scorer injectable (offline logic test); default `local_nli_scorer` runs the pinned local nli-base with torch/transformers imported lazily (localmodel image only, like Laya — no heavy deps in core). Verified amd64+arm64: ruff, pytest (+6 `tests/test_nli.py`: split, false-premise caught, snowball caught, consistent clean, 5-item labelled set precision/recall, threshold gating), plan harness ALL PASS. Core oracle complete (garak misleading/snowball inducer is engine-side; real nli-base runs in the localmodel image).
+
+- P3 · H2/H5/H6/H7 hallucination fuzzers — `hfsentinel/halluc/fuzzers.py`: H2 `fabricated_apis` (dotted API calls vs an injectable reference), H5 `sycophantic_reversal` (answer-flip detector), H6 `fabricated_citations` (DOI/arXiv/URL vs an injectable source check), H7 `miscalibrated` (high-confidence language on a wrong answer). Existence checks injectable → offline tests; inducers are campaign/engine-side. All feed the Hallucination Score. Verified amd64+arm64: ruff, pytest (+8 `tests/test_halluc_fuzzers.py`), plan harness ALL PASS. Oracles complete. **With H1–H7 oracles now built, the whole hallucination category is covered.**
 
 ## In progress
 - Next: open P2 — pin+fetch-verify the Laya multilingual checkpoint (needs a verified download) to light up the routing; a judge-scored engine technique emitting candidates (harmful-goal jailbreak) to light up the judge path; full D-018 always-on engine service; HF Jobs target runner (D-004); Wrap garak; distillation. Awaiting direction.

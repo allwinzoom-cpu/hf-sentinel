@@ -47,16 +47,25 @@ def _scan_script(model_id: str, dataset_repo: str, trials: int, max_minutes: int
     upload the report to the private dataset. The token is read from the HFS secret env the job injects; it is never
     interpolated into this string. The scan URL is hard-pinned to loopback (no SSRF)."""
     base = f"http://{LOOPBACK}:{PORT}/v1"
-    # Note: ${HF_TOKEN} is expanded inside the job from the injected secret, not here.
+    # Note: ${HF_TOKEN} is expanded inside the job from the injected secret, not here. `python3` is used (not a bare
+    # `python`) so the script runs on the official vLLM/Python images, which ship python3 but not always `python`.
+    # The scan exits 10 when it confirms a finding at/above --fail-on (the PR-gate contract); that is the *expected*
+    # outcome against a vulnerable target, not a job failure, so we capture its code under `set +e` and still upload
+    # the report — otherwise `set -e` would abort before the upload exactly when there is a finding worth keeping.
     return (
         "set -eu\n"
-        f"python -m vllm.entrypoints.openai.api_server --model '{model_id}' --host {LOOPBACK} --port {PORT} &\n"
+        f"python3 -m vllm.entrypoints.openai.api_server --model '{model_id}' --host {LOOPBACK} --port {PORT} &\n"
         "VLLM_PID=$!\n"
         f"for i in $(seq 1 120); do curl -sf {base}/models >/dev/null 2>&1 && break || sleep 5; done\n"
+        "set +e\n"
         f"hfsentinel scan 'openai+{base}#{model_id}' --via direct --trials {trials} "
         f"--max-minutes {max_minutes} --format json --out /tmp/out\n"
+        "SCAN_RC=$?\n"
+        "set -e\n"
         "kill $VLLM_PID 2>/dev/null || true\n"
-        "python -c \"import os,glob; from huggingface_hub import HfApi; "
+        'if [ "$SCAN_RC" != 0 ] && [ "$SCAN_RC" != 10 ]; then '
+        'echo \"scan failed (exit $SCAN_RC)\" >&2; exit "$SCAN_RC"; fi\n'
+        "python3 -c \"import os,glob; from huggingface_hub import HfApi; "
         "f=sorted(glob.glob('/tmp/out/*.json'))[-1]; "
         f"HfApi(token=os.environ['HF_TOKEN']).upload_file(path_or_fileobj=f, "
         f"path_in_repo='reports/'+os.path.basename(f), repo_id='{dataset_repo}', repo_type='dataset')\"\n"

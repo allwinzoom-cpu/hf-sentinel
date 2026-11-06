@@ -60,6 +60,14 @@ def test_scan_script_is_loopback_only_and_uploads():
     assert f"http://127.0.0.1:{job_target.PORT}/v1" in script
     assert GOOD["model_id"] in script and GOOD["dataset_repo"] in script
     assert "upload_file" in script and "repo_type='dataset'" in script
+    # The scan exits 10 on a confirmed gated finding; the report must still upload (set +e around the scan,
+    # capture SCAN_RC, only bail on a *real* failure) — otherwise set -e would skip the upload for the one
+    # case that matters. The upload (upload_file) must come after the scan's exit code is captured.
+    assert "set +e" in script and "SCAN_RC=$?" in script
+    assert script.index("SCAN_RC=$?") < script.index("upload_file")
+    assert '"$SCAN_RC" != 10' in script  # exit 10 (findings) is tolerated, not a job failure
+    # python3 (not a bare `python`) so it runs on the official vLLM/Python images
+    assert "python3 -m vllm" in script and "python -m vllm" not in script
 
 
 def test_launch_requires_token():

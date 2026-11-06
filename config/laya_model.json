@@ -1,34 +1,64 @@
 {
- "_comment": "Laya System-1 pin (plan 16.19, D-013). ModernBERT-large encoder + from-scratch RL decision head (convaiinnovations/laya, typed-decisions variant). Fetch + verify with `python -m hfsentinel.engines.laya_fetch`; the engine loads it offline with strict sha256 checks. `code` = vendored inference files (engines/laya/), verified at load. Model-file sha256/size filled from a verified download.",
+ "_comment": "Laya System-1 pin (plan 16.19, D-013). ModernBERT encoder + from-scratch RL decision head (convaiinnovations/laya). Two variants are pinned: `typed-decisions` (English, the default) and `multilingual` (routed to for non-Latin-script replies — the English checkpoint is confidently wrong on them per its card). Fetch + verify with `python -m hfsentinel.engines.laya_fetch` (writes each variant to <dir>/<variant>/); the engine loads one variant offline (HFS_LAYA_VARIANT, default `default_variant`) with strict per-file sha256 checks. `code` = shared vendored inference files (engines/laya/), verified at load. All sha256/size are from a verified download: small files hashed directly, LFS files via the Hub's git-lfs oid (= sha256, confirmed by stream-hash) and re-verified by the fetch tool on download.",
  "repo": "convaiinnovations/laya",
  "revision": "7b928d828b7b0e022f929d9bd2e44165aa270148",
- "variant": "typed-decisions",
  "license": "apache-2.0",
- "params": 421293830,
  "code": {
   "rl_agent_api.py": "be3b46819c9999c3ef88e0f2ecf6d3ab1cdfed1d9a8b466fc89811e34d44031b",
   "rl_common.py": "8d83611d480c971d640a7b7d3aa2f2219c5e8455e9cc2329fd073681bd8be23e"
  },
- "files": {
-  "rl_agent_config.json": {
-   "sha256": "ebf0cd524d92342a6be5e48e9fca3d7c2babfb5a56ccd79d2171ef5d8c7f7be8",
-   "size": 847
+ "default_variant": "typed-decisions",
+ "variants": {
+  "typed-decisions": {
+   "variant": "typed-decisions",
+   "params": 421293830,
+   "files": {
+    "rl_agent_config.json": {
+     "sha256": "ebf0cd524d92342a6be5e48e9fca3d7c2babfb5a56ccd79d2171ef5d8c7f7be8",
+     "size": 847
+    },
+    "encoder/config.json": {
+     "sha256": "5268d24ad3b77c8151de5dcb0762ba4391619aad9ab0bda33e36fb083cfeae6d",
+     "size": 2084
+    },
+    "model.safetensors": {
+     "sha256": "4fa56de72383a9d3efa9cfa78955733c81b9fc8067a587ca4beb82c78107a24e",
+     "size": 842609220
+    },
+    "tokenizer/tokenizer.json": {
+     "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+     "size": 3583228
+    },
+    "tokenizer/tokenizer_config.json": {
+     "sha256": "08d4cf3ac4dca381759441b85b91a6d40e688471dcd33d15d6649eb0a9a854d1",
+     "size": 337
+    }
+   }
   },
-  "encoder/config.json": {
-   "sha256": "5268d24ad3b77c8151de5dcb0762ba4391619aad9ab0bda33e36fb083cfeae6d",
-   "size": 2084
-  },
-  "model.safetensors": {
-   "sha256": "4fa56de72383a9d3efa9cfa78955733c81b9fc8067a587ca4beb82c78107a24e",
-   "size": 842609220
-  },
-  "tokenizer/tokenizer.json": {
-   "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
-   "size": 3583228
-  },
-  "tokenizer/tokenizer_config.json": {
-   "sha256": "08d4cf3ac4dca381759441b85b91a6d40e688471dcd33d15d6649eb0a9a854d1",
-   "size": 337
+  "multilingual": {
+   "variant": "multilingual",
+   "files": {
+    "rl_agent_config.json": {
+     "sha256": "25061739243b617ad88d1219ba6f8a9c86c5881ca28df024fa2d9b3b2fcc30c6",
+     "size": 472
+    },
+    "encoder/config.json": {
+     "sha256": "83f6916d13ef0f556ac461f28308dc2bffa7ebeadee8ec9e2db5812020ea5bb4",
+     "size": 1938
+    },
+    "model.safetensors": {
+     "sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+     "size": 643835514
+    },
+    "tokenizer/tokenizer.json": {
+     "sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f",
+     "size": 34363188
+    },
+    "tokenizer/tokenizer_config.json": {
+     "sha256": "6c6b2d8e3c84ce0e671c129cd6b374b235d6f9863042a5836358d00a89bbb5a1",
+     "size": 524
+    }
+   }
   }
  }
 }

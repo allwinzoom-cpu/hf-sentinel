@@ -20,7 +20,9 @@ RUN pip install --root-user-action=ignore --require-hashes --only-binary=:all: \
 
 COPY config/laya_model.json /opt/core/config/laya_model.json
 # Vendored, reviewed inference code (sha256-pinned in laya_model.json; verified at load).
-COPY engines/laya/rl_agent_api.py engines/laya/rl_common.py engines/laya/server.py /opt/laya/
+COPY engines/laya/rl_agent_api.py engines/laya/rl_common.py engines/laya/server.py engines/laya/train.py /opt/laya/
+# Distillation core (stdlib-only; same file as hfsentinel/engines/distill.py — single source, loads standalone here).
+COPY hfsentinel/engines/distill.py /opt/laya/distill.py
 RUN chmod -R a+rX,go-w /opt \
  && useradd --system --uid 10001 --home-dir /tmp --shell /usr/sbin/nologin sentinel
 USER 10001:10001

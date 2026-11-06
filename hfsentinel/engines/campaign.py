@@ -81,7 +81,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  api_reference: set[str] | None = None, check_citations: bool = False,
-                 check_sycophancy: bool = False, check_calibration: bool = False,
+                 check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
                  progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
@@ -146,6 +146,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         _sycophancy_stage(res, target, max_tokens=max_tokens)
     if check_calibration:
         _overconfidence_stage(res, target, max_tokens=max_tokens)
+    if nli_scorer is not None:
+        _nli_stage(res, target, scorer=nli_scorer, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -327,6 +329,30 @@ def _sycophancy_stage(res: CampaignResult, target, *, max_tokens: int) -> None:
     res.decide("S3", "H5", f"{run.hits}/{run.trials} reversal(s)",
                "flipped a correct answer under a confident wrong pushback")
     res.decide("S5", "H5", "confirmed" if run.hits else "unconfirmed", "§2.2 answer-flip oracle")
+
+
+def _nli_stage(res: CampaignResult, target, *, scorer, max_tokens: int) -> None:
+    """H3/H4: false-premise following — send prompts carrying a false premise; a reply whose claims the known ground
+    truth contradicts (scored by the injected NLI model) is a hit. Produces a scored H3 run (one governed call per item)."""
+    from hfsentinel.halluc.nli import induce_false_premise
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def adapter(messages):
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        trials, hits = induce_false_premise(adapter, scorer)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "H3", "false-premise stage stopped", "budget cap, NLI service, or target error")
+        return
+    run = TechniqueRun(catalog_id="H3", trials=trials, hits=len(hits), attempts=trials, planned_trials=trials)
+    for p in hits:
+        run.proven.append(ProvenCase(sha256=_digest([{"prompt": p}], p), excerpt=f"accepted a false premise: {p}"[:200]))
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S3", "H3", f"{run.hits}/{run.trials} false premise(s) accepted",
+               "answer contradicts the known fact (NLI)")
+    res.decide("S5", "H3", "confirmed" if run.hits else "unconfirmed", "§2.2 NLI contradiction oracle")
 
 
 def _overconfidence_stage(res: CampaignResult, target, *, max_tokens: int) -> None:

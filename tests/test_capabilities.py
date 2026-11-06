@@ -63,3 +63,19 @@ def test_coverage_md_is_current():
     md = (ROOT / "docs" / "coverage.md").read_text(encoding="utf-8")
     assert md == coverage.render(CAPS), "docs/coverage.md is stale — run `python engines/coverage_matrix.py`"
     assert f"All {len(coverage.catalog_ids())} catalog IDs accounted" in md
+
+
+def test_gaps_are_identified_and_every_gap_is_ticketed():
+    # task 600: the coverage matrix names the techniques no tool reliably covers yet, each mapped to a reason/ticket.
+    g = coverage.gaps(CAPS)
+    assert g, "expected known coverage gaps (the judge-gated B jailbreaks)"
+    assert all(row["reason"] for row in g), "every gap must map to a Phase-3/4 ticket (its reason)"
+    assert all(row["status"] in {"deferred", "experimental"} for row in g)
+    ids = {row["id"] for row in g}
+    assert not ({"H2", "H5", "H6", "H7"} & ids)        # hallucination gaps the plan expected are now closed
+    assert ids <= set(CAPS["status"])                   # gaps are catalog IDs
+
+
+def test_coverage_md_has_a_gaps_section():
+    md = (ROOT / "docs" / "coverage.md").read_text(encoding="utf-8")
+    assert "## Gaps — no reliable coverage yet (task 600)" in md

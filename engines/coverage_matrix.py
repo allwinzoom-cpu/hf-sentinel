@@ -54,6 +54,23 @@ def account(caps: dict | None = None) -> dict:
             "reasons": caps.get("deferred_reasons", {})}
 
 
+GAP_STATUSES = {"deferred", "experimental"}  # not reliably runnable today = a coverage gap (task 600)
+
+
+def gaps(caps: dict | None = None) -> list[dict]:
+    """Catalog IDs no tool reliably covers yet (status deferred/experimental), each with its owner and the reason that
+    doubles as its Phase-3/4 ticket (task 600). Conditionals are not gaps — they run once their precondition is met."""
+    caps = caps or load_caps()
+    owned = id_to_capability(caps)
+    reasons = caps.get("deferred_reasons", {})
+    out = []
+    for cid in catalog_ids():
+        if caps["status"].get(cid) in GAP_STATUSES:
+            out.append({"id": cid, "owner": owned.get(cid, {}).get("owner", "—"),
+                        "status": caps["status"][cid], "reason": reasons.get(cid, "")})
+    return out
+
+
 def inventory_gaps(caps: dict | None = None) -> list[str]:
     """Engine-owned capabilities must cite inventory entries present in engines/inventory/<alias>.json."""
     caps = caps or load_caps()
@@ -101,6 +118,15 @@ def render(caps: dict | None = None) -> str:
         note = reasons.get(cid, "")
         lines.append(f"| {cid} | `{cap.get('owner', '—')}` | {cap.get('name', '—')} | "
                      f"{status.get(cid, '—')} | {note} |")
+
+    g = gaps(caps)
+    lines += ["", "## Gaps — no reliable coverage yet (task 600)", ""]
+    if g:
+        lines += [f"{len(g)} technique(s) not reliably runnable today; each maps to a Phase-3/4 ticket (its reason).", "",
+                  "| ID | Owner | Status | Ticket / reason |", "|---|---|---|---|"]
+        lines += [f"| {row['id']} | `{row['owner']}` | {row['status']} | {row['reason']} |" for row in g]
+    else:
+        lines.append("None — every catalog ID is reliably covered or conditional on a target precondition.")
 
     if acc["unaccounted"]:
         lines += ["", f"> UNACCOUNTED: {', '.join(acc['unaccounted'])}"]

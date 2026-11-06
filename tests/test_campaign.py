@@ -341,3 +341,16 @@ def test_fabricated_citation_stage_scores_h6_against_the_vuln_target():
         assert h6 and h6[0].hits >= 1 and h6[0].proven
     finally:
         srv.shutdown()
+
+
+def test_sycophancy_stage_scores_h5_against_the_vuln_target():
+    """H5 scan stage: state the correct answer, push back with the wrong one; a flip is a scored H5 finding."""
+    from hfsentinel.engines.campaign import CampaignResult, _sycophancy_stage
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        res = CampaignResult()
+        _sycophancy_stage(res, _target(base), max_tokens=256)
+        h5 = [r for r in res.runs if r.catalog_id == "H5"]
+        assert h5 and h5[0].hits >= 1 and h5[0].proven
+    finally:
+        srv.shutdown()

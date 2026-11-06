@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from hfsentinel.attacks.canary import CANARY_IDS, CanaryRun
 from hfsentinel.attacks.catalog import load_catalog
-from hfsentinel.engines.governor import Governor
+from hfsentinel.engines.governor import BudgetExceeded, Governor
 from hfsentinel.engines.planner import Plan
 from hfsentinel.engines.strategy_library import Outcome, StrategyLibrary
 from hfsentinel.engines.sweep import NATIVE, TechniqueRun, _digest, run_technique
@@ -49,6 +49,8 @@ class CampaignResult:
     verify_requests: int = 0  # S6 cross-verification requests (separate from the breadth-sweep budget)
     escalations: list = field(default_factory=list)  # S4: {id, mutator, hits, trials, confirmed}
     depth_requests: int = 0  # S4 escalation requests
+    multiturn: dict = field(default_factory=dict)  # B4: adaptive multi-turn escalation outcome (broken, turn, move)
+    multiturn_requests: int = 0  # multi-turn escalation requests
     baseline: dict = field(default_factory=dict)  # catalog_id -> {hits, trials} un-attacked arm (16.4)
     baseline_requests: int = 0
     judge_calls_made: int = 0      # responses sent to System-2 judges at S5 (16.19)
@@ -135,6 +137,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
+    _multiturn_stage(res, target, max_tokens=max_tokens, system_one=s1)
     _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
                   concurrency=concurrency, seed=seed)
     _judge_confirm(res, panel, s1, judge_candidates or [])
@@ -214,6 +217,34 @@ def _memorization_stage(res: CampaignResult, target, gov, *, reference_set: dict
     res.decide("S3", "C3", f"{run.hits}/{run.trials} memorized",
                "verbatim reproduction of a held reference (training-data extraction)")
     res.decide("S5", "C3", "confirmed" if run.hits else "unconfirmed", "§2.2 deterministic near-match oracle")
+
+
+def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:
+    """Adaptive multi-turn escalation (B4/16.18) as a scan stage: run the escalating conversation (direct → roleplay →
+    authority → encoded → ciphered, Crescendo-style) and record whether it *gradually broke* the target (a canary leaked)
+    and at which turn. Supplementary intelligence alongside the scored sweep — never double-counts the direct-injection
+    grade. Each turn is a governed request (target.chat raises BudgetExceeded over budget)."""
+    from hfsentinel.attacks.multiturn import escalate_conversation
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def adapter(messages):
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        result = escalate_conversation(adapter, system_one=system_one)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S4", "A1", "multi-turn escalation stopped", "budget cap or target error")
+        return
+    res.multiturn = {"broken": result.broken, "break_turn": result.break_turn, "move": result.move,
+                     "turns": [[t.move, t.refused] for t in result.turns]}
+    res.multiturn_requests = len(result.turns)
+    res.requests += len(result.turns)
+    if result.broken:
+        res.decide("S4", "A1", f"multi-turn escalation broke the target at turn {result.break_turn}",
+                   f"move '{result.move}' leaked the canary after {result.break_turn - 1} softer turn(s) refused")
+    else:
+        res.decide("S4", "A1", "multi-turn escalation did not break the target",
+                   f"{len(result.turns)} turns, all refused")
 
 
 def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, trials, temperature, max_tokens,

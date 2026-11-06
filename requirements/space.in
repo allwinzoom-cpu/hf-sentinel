@@ -1,0 +1,4 @@
+# HF-Sentinel Space UI (plan 663/664) — deploy-only dependency, NOT in the core/runtime image.
+# gradio is imported lazily in hfsentinel/space/app.py; the core scanner and its tests never require it.
+# The pinned lock (requirements/space.lock) is generated at Space-build time, like the per-engine locks.
+gradio==4.44.1

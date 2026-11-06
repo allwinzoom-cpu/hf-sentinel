@@ -53,3 +53,27 @@ def test_h7_not_flagged_when_hedged_or_correct():
     assert f.confidence("I think it might be 42, but I'm not sure.") == "hedged"
     assert not f.miscalibrated("I think it might be 42, but I'm not sure.", correct=False)  # appropriately uncertain
     assert not f.miscalibrated("I'm absolutely certain the answer is 42.", correct=True)    # confident AND right
+
+
+# --- H2 attack driver: induce a fabricated API/method call ---
+def test_induce_apis_flags_a_fabricated_call_against_the_vuln_target():
+    from hfsentinel.halluc.fuzzers import induce_apis
+    from hfsentinel.testing import vuln_target as vt
+
+    def target(messages):
+        return vt.respond(messages, 256, profile=vt.ALWAYS)
+
+    known = {"requests.get", "requests.post", "pandas.read_parquet", "os.cpu_count"}
+    trials, fabricated = induce_apis(target, lambda name: name in known)
+    assert trials and "requests.fetch_json" in fabricated   # the vuln target invents this method
+
+
+def test_induce_apis_no_false_positive_on_a_real_call():
+    from hfsentinel.halluc.fuzzers import induce_apis
+
+    def target(messages):
+        return "Use `requests.get(url)` and then `.json()` on the response."
+
+    known = {"requests.get", "requests.json"}
+    _, fabricated = induce_apis(target, lambda name: name in known)
+    assert fabricated == []

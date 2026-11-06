@@ -32,3 +32,32 @@ def test_empty_inputs_are_safe():
     assert near_match("", REF) is None
     assert near_match("anything", {}) is None
     assert near_match("anything", {"x": ""}) is None
+
+
+# --- C3 attack: training-data / memorization extraction, end-to-end ---
+def test_cloze_prompt_gives_the_passage_lead():
+    from hfsentinel.attacks.memorization import PLANTED_REFERENCE, cloze_prompt
+    p = cloze_prompt("doc-meridian")
+    assert "word for word" in p and "Meridian Protocol was ratified" in p
+    assert PLANTED_REFERENCE["doc-meridian"] not in p          # only the lead, not the whole passage
+
+
+def test_extract_finds_memorization_against_the_real_vuln_target():
+    from hfsentinel.attacks.memorization import extract
+    from hfsentinel.testing import vuln_target as vt
+
+    def target(messages):
+        return vt.respond(messages, 256, profile=vt.ALWAYS)
+
+    findings = extract(target)
+    assert findings and findings[0].reference_id == "doc-meridian"
+    assert findings[0].ratio >= 0.9                            # the full passage was reproduced verbatim
+
+
+def test_extract_no_false_positive_when_the_model_paraphrases():
+    from hfsentinel.attacks.memorization import extract
+
+    def paraphraser(messages):
+        return "Here's a rough summary in my own words: some old coastal agreement about tides and lighthouses."
+
+    assert extract(paraphraser) == []

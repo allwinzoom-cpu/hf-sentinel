@@ -26,7 +26,7 @@ Generated from `engines/capabilities.json` by `engines/coverage_matrix.py` (plan
 
 ## Catalog accounting
 
-All 52 catalog IDs accounted for · conditional: 7 · deferred: 11 · engine-wired: 2 · experimental: 9 · oracle-only: 15 · wired: 8
+All 52 catalog IDs accounted for · conditional: 11 · deferred: 11 · engine-wired: 2 · experimental: 9 · oracle-only: 11 · wired: 8
 
 | ID | Owner | Capability | Status | Note |
 |---|---|---|---|---|
@@ -35,7 +35,7 @@ All 52 catalog IDs accounted for · conditional: 7 · deferred: 11 · engine-wir
 | A3 | `built-by-us` | deterministic-canary-injection-oracles | wired |  |
 | A4 | `built-by-us` | deterministic-canary-injection-oracles | conditional | conditional: multimodal input accepted |
 | A5 | `built-by-us` | deterministic-canary-injection-oracles | wired |  |
-| A6 | `built-by-us` | deterministic-canary-injection-oracles | conditional | conditional: chat-templated target that parses special tokens |
+| A6 | `built-by-us` | deterministic-canary-injection-oracles | conditional | native breadth sweep; runs when recon detects special_token_parsing (chat-template injection) |
 | B1 | `probe-suite` | static-jailbreak-probe-breadth | engine-wired |  |
 | B2 | `orchestrator` | adaptive-multi-turn-and-converters | engine-wired |  |
 | B3 | `probe-suite` | static-jailbreak-probe-breadth | deferred | garak static-breadth / templated battery (641) wiring pending |
@@ -61,7 +61,7 @@ All 52 catalog IDs accounted for · conditional: 7 · deferred: 11 · engine-wir
 | B23 | `built-by-us` | constrained-decoding-oracle | experimental | candidate; experimental, never scored (constrained decoding) |
 | C1 | `built-by-us` | extraction-and-memorization-oracles | oracle-only | native canary oracle built + tested; payload corpus via extractor, not in breadth sweep |
 | C2 | `built-by-us` | deterministic-canary-injection-oracles | wired |  |
-| C3 | `built-by-us` | extraction-and-memorization-oracles | oracle-only | native memorization oracle + cloze-extraction attack built + tested (attacks/memorization.py: extract); needs a held reference set; not yet in the breadth sweep |
+| C3 | `built-by-us` | extraction-and-memorization-oracles | conditional | scan stage via --memorization-refs (operator-held reference set) |
 | C4 | `built-by-us` | extraction-and-memorization-oracles | conditional | conditional: target has cross-session memory |
 | D1 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool-enabled target or mock-tool env (oracle tested via fixtures) |
 | D2 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool-enabled target or mock-tool env (oracle tested via fixtures) |
@@ -75,10 +75,10 @@ All 52 catalog IDs accounted for · conditional: 7 · deferred: 11 · engine-wir
 | E3 | `built-by-us` | active-content-and-resource-oracles | wired |  |
 | E4 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool loop possible (native loop-cap oracle tested via fixtures) |
 | E5 | `built-by-us` | active-content-and-resource-oracles | oracle-only | native active-content oracle built + tested; not in breadth sweep |
-| H1 | `built-by-us` | hallucination-oracles | oracle-only | native registry oracle built + tested; run via hallucination profile |
-| H2 | `built-by-us` | hallucination-oracles | conditional | conditional: reference oracle for the command/API |
-| H3 | `built-by-us` | hallucination-oracles | oracle-only | native NLI oracle built + tested; run via hallucination profile |
-| H4 | `built-by-us` | hallucination-oracles | oracle-only | native oracle built + tested; run via hallucination profile |
-| H5 | `built-by-us` | hallucination-oracles | conditional | conditional: multi-turn |
-| H6 | `built-by-us` | hallucination-oracles | conditional | conditional: source-existence oracle |
-| H7 | `built-by-us` | hallucination-oracles | conditional | conditional: ground-truth + calibration readout |
+| H1 | `built-by-us` | hallucination-oracles | conditional | scan stage via --halluc-registries (live registry check) |
+| H2 | `built-by-us` | hallucination-oracles | conditional | scan stage via --api-reference (operator known-API set) |
+| H3 | `built-by-us` | hallucination-oracles | conditional | scan stage via --nli-url (operator NLI service) |
+| H4 | `built-by-us` | hallucination-oracles | conditional | scan stage via --nli-url (shares the NLI false-premise oracle) |
+| H5 | `built-by-us` | hallucination-oracles | conditional | scan stage via --check-sycophancy (two-turn answer-flip) |
+| H6 | `built-by-us` | hallucination-oracles | conditional | scan stage via --check-citations (DOI/arXiv resolver, SSRF-safe) |
+| H7 | `built-by-us` | hallucination-oracles | conditional | scan stage via --check-calibration (confidence vs correctness) |

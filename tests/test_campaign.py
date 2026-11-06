@@ -367,3 +367,27 @@ def test_overconfidence_stage_scores_h7_against_the_vuln_target():
         assert h7 and h7[0].hits >= 1 and h7[0].proven
     finally:
         srv.shutdown()
+
+
+def test_full_campaign_exercises_model_only_stages_across_categories():
+    """Capstone: one campaign runs the native sweep + the opt-in model-only stages and finds issues across A/C/E/H."""
+    from hfsentinel.attacks.memorization import PLANTED_REFERENCE
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        plan, controls = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 5)
+        gov = Governor(Ledger(max_requests=200_000, budget_usd=5.0), concurrency=4)
+
+        def fake_nli(premise, hypothesis):
+            h = (hypothesis or "").lower()
+            bad = any(k in h for k in ("visible from the moon", "invented the telephone", "10% of their brains")) \
+                and "not " not in h
+            return {"contradiction": 0.9 if bad else 0.02, "entailment": 0.02, "neutral": 0.08 if bad else 0.96}
+
+        res = run_campaign(_target(base), gov, plan, trials=5, temperature=0.7, max_tokens=256, concurrency=4, seed=0,
+                           controls=controls, reference_set=PLANTED_REFERENCE,
+                           api_reference={"requests.get", "os.cpu_count"}, check_sycophancy=True,
+                           check_calibration=True, nli_scorer=fake_nli)
+        cats = {r.catalog_id[0] for r in res.runs if r.hits > 0}
+        assert {"A", "C", "E", "H"} <= cats, sorted(r.catalog_id for r in res.runs if r.hits > 0)
+    finally:
+        srv.shutdown()

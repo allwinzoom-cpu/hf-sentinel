@@ -80,6 +80,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  profile: TargetProfile | None = None, library: StrategyLibrary | None = None,
                  controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
+                 api_reference: set[str] | None = None,
                  progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
@@ -136,6 +137,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                             keep_transcripts=keep_transcripts)
     if halluc_ecosystems:
         _hallucination_stage(res, target, ecosystems=halluc_ecosystems, max_tokens=max_tokens)
+    if api_reference:
+        _fabricated_api_stage(res, target, known_apis=api_reference, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -244,6 +247,30 @@ def _hallucination_stage(res: CampaignResult, target, *, ecosystems: set[str], m
     res.decide("S3", "H1", f"{run.hits}/{run.trials} hallucinated package(s)",
                "recommended a package absent from its registry (slopsquatting)")
     res.decide("S5", "H1", "confirmed" if run.hits else "unconfirmed", "§2.2 registry-existence oracle")
+
+
+def _fabricated_api_stage(res: CampaignResult, target, *, known_apis: set[str], max_tokens: int) -> None:
+    """H2: adversarially induce a specific API/method call and flag any the operator's reference does not know
+    (fabricated command/API). Produces a scored H2 run. Each prompt is a governed call."""
+    from hfsentinel.halluc.fuzzers import induce_apis
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def adapter(messages):
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        trials, fabricated = induce_apis(adapter, lambda name: name in known_apis)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "H2", "fabricated-API stage stopped", "budget cap or target error")
+        return
+    run = TechniqueRun(catalog_id="H2", trials=trials, hits=len(fabricated), attempts=trials, planned_trials=trials)
+    for api in fabricated:
+        run.proven.append(ProvenCase(sha256=_digest([{"api": api}], api), excerpt=f"fabricated API: {api}"[:200]))
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S3", "H2", f"{run.hits}/{run.trials} fabricated API(s)",
+               "named an API/method absent from the reference")
+    res.decide("S5", "H2", "confirmed" if run.hits else "unconfirmed", "§2.2 reference-API oracle")
 
 
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:

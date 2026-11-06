@@ -103,6 +103,24 @@ def _load_memorization_refs(path):
     return refs
 
 
+def _load_api_reference(path):
+    """Load the operator's known dotted API names for H2 (a local JSON list of strings); None when not supplied."""
+    if path is None:
+        return None
+    if not path.is_file() or path.stat().st_size > _MAX_REFS_BYTES:
+        raise _fail("--api-reference must be a JSON file no larger than 5 MB", EXIT_INPUT)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise _fail("--api-reference: unreadable or invalid JSON", EXIT_INPUT) from None
+    if not isinstance(data, list) or not all(isinstance(x, str) for x in data):
+        raise _fail("--api-reference must be a JSON array of dotted API names", EXIT_INPUT)
+    names = {x.strip() for x in data if x.strip()}
+    if not names:
+        raise _fail("--api-reference has no non-empty names", EXIT_INPUT)
+    return names
+
+
 _HALLUC_ECOSYSTEMS = {"pypi", "npm", "crates", "rubygems"}
 
 
@@ -339,6 +357,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          tools: Annotated[Path | None, _opt("Mock-tool manifest (enables D*).", JDG)] = None,
          halluc_registries: Annotated[str | None, _opt("pypi,npm,crates,rubygems.", JDG)] = None,
          memorization_refs: Annotated[Path | None, _opt("JSON {id: text} of held reference texts (enables C3).", JDG)] = None,
+         api_reference: Annotated[Path | None, _opt("JSON list of known dotted API names (enables H2).", JDG)] = None,
          sink_url: Annotated[str | None, _opt("Controlled https exfil sink.", JDG)] = None,
          with_firewall: Annotated[bool | None, _opt("Also run the guardrail differential.", JDG,
                                                     "--with-firewall/--without-firewall")] = None,
@@ -405,7 +424,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
     _execute(resolved, res, attestation, config, run_engines=engines, system_one_url=system_one,
              system_one_multilingual_url=system_one_multilingual, use_judges=judges,
              reference_set=_load_memorization_refs(memorization_refs),
-             halluc_ecosystems=_parse_halluc_registries(halluc_registries))
+             halluc_ecosystems=_parse_halluc_registries(halluc_registries),
+             api_reference=_load_api_reference(api_reference))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
@@ -480,7 +500,8 @@ def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, u
 def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, config: Path | None,
              *, run_engines: bool = False, system_one_url: str | None = None,
              system_one_multilingual_url: str | None = None, use_judges: bool = False,
-             reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None) -> None:
+             reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
+             api_reference: set[str] | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -519,7 +540,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
                           seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
                           library=library, controls=c, keep_transcripts=c.output.save_transcripts,
-                          reference_set=reference_set, halluc_ecosystems=halluc_ecosystems, progress=progress)
+                          reference_set=reference_set, halluc_ecosystems=halluc_ecosystems,
+                          api_reference=api_reference, progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "

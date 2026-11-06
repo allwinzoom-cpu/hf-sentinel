@@ -314,3 +314,17 @@ def test_hallucination_stage_scores_h1_against_the_vuln_target():
         assert h1 and h1[0].hits >= 1 and h1[0].proven       # recommended a non-existent package
     finally:
         srv.shutdown()
+
+
+def test_fabricated_api_stage_scores_h2_against_the_vuln_target():
+    """H2 scan stage: induce an API call and flag any the operator's reference does not know (fabricated)."""
+    from hfsentinel.engines.campaign import CampaignResult, _fabricated_api_stage
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        res = CampaignResult()
+        known = {"requests.get", "requests.post", "pandas.read_parquet", "os.cpu_count"}
+        _fabricated_api_stage(res, _target(base), known_apis=known, max_tokens=256)
+        h2 = [r for r in res.runs if r.catalog_id == "H2"]
+        assert h2 and h2[0].hits >= 1 and h2[0].proven
+    finally:
+        srv.shutdown()

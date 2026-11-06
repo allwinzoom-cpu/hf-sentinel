@@ -29,7 +29,10 @@ docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --network none \
   hfsentinel:runtime resolve --via direct hf-provider://Qwen/Qwen3-32B@deepinfra
 # Targets: hf-provider://org/model[@provider] · hf-endpoint://<host>.endpoints.huggingface.cloud[#model] ·
-#          hf-space://owner/space[@api|#model] · openai+https://host/v1#model · hf-job://org/model[@flavor] (deferred, D-004)
+#          hf-space://owner/space[@api|#model] · openai+https://host/v1#model
+# HF Jobs runner (plan 617): `hfsentinel job <org/model> --dataset <org/reports> --image <vllm+sentinel>` launches an
+# ephemeral HF Job that serves the model with vLLM on loopback, scans it, and uploads the report to a private dataset.
+# The job.write token is passed to the job only as a secret (never logged). --dry-run prints the job spec, submits nothing.
 # Scope (plan 16.1, D-003): anything that sends target traffic (scan, --recon) needs authorization — a signed scope
 # file, or a built-in source (loopback host; D-007 reference endpoints). Out-of-scope targets are refused (exit 3)
 # before any network call, including Hub lookups. Sign with your SSH key; trust signers in allowed_signers:
@@ -81,14 +84,20 @@ docker run --rm --network none --cpus 2 --memory 4g --read-only --tmpfs /tmp --c
 # Pin another model (refuses gated / > 0.5B):  python -m hfsentinel.targets.local_hf pin <repo> <alias> chat|nli
 
 # Laya System-1 decision layer (plan 16.19, D-013): local calibrated act-vs-escalate model (convaiinnovations/laya,
-# ModernBERT-large + RL head, 421M, CPU, offline). Fetch + sha256-verify the pinned weights, then self-test offline:
+# ModernBERT + RL head, CPU, offline). Two variants are pinned: typed-decisions (English, default) and multilingual
+# (non-Latin-script replies route to it). Fetch + sha256-verify (writes each variant to its own subdir), then self-test:
 L="${HFS_LAYA_DIR:-$HOME/.cache/hfsentinel/laya}"; mkdir -p "$L"
-python -m hfsentinel.engines.laya_fetch                       # verifies every file against config/laya_model.json
+python -m hfsentinel.engines.laya_fetch                       # both variants; or --variant multilingual for just one
 docker buildx build --platform linux/arm64 -f engines/laya/Dockerfile -t hfsentinel-laya:arm64 --load .
 docker run --rm --network none --cpus 2 --memory 4g --read-only --tmpfs /tmp --cap-drop ALL \
-  --security-opt no-new-privileges -v "$L:/models/laya:ro" hfsentinel-laya:arm64 --selftest
+  --security-opt no-new-privileges -v "$L/typed-decisions:/models/laya:ro" hfsentinel-laya:arm64 --selftest
+# Multilingual: add -e HFS_LAYA_VARIANT=multilingual and mount "$L/multilingual:/models/laya:ro".
 # --serve exposes POST /system_one {state, questions}; SystemOne (hfsentinel/core/system_one.py) is the client.
 # Advisory only: low confidence / escalate / likely-success always go to System-2 (judges); Laya never confirms.
+# Distillation (plan 616, D-006; runs HF-side, never locally): learn from System-2-confirmed verdicts to improve triage,
+# promoting a candidate only if it beats the current checkpoint without lowering triage recall. In the laya image:
+#   train.py --embed  --verdicts V.jsonl --model-dir /models/laya --out data.jsonl   # redact -> D-015 dataset (embeddings only)
+#   train.py --train  --data data.jsonl --out cand   &&   train.py --gate --data data.jsonl --candidate cand  # gate: promote?
 
 # Engines (garak, PyRIT, …): relock inside the tools container, then build + smoke + OSV-audit every image
 docker buildx build --platform linux/amd64 -f engines/tools/Dockerfile -t hfsentinel-tools:amd64 --load .

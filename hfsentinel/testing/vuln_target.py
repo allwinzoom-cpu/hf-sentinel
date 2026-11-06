@@ -154,7 +154,9 @@ def _decode_encodings(text: str) -> str:
         out.append(_c.encode(text, "rot_13"))
     if "leet" in low:
         out.append(text.translate(_LEET_BACK))
-    out.append(text.translate(_HOMO_BACK))
+    homo = text.translate(_HOMO_BACK)
+    if homo != text:  # only when homoglyphs were actually present, so plain ASCII stays byte-identical (A3 heuristic)
+        out.append(homo)
     return "\n".join(out)
 
 
@@ -170,7 +172,7 @@ def _cda_enum(response_format: object) -> tuple[str, str] | None:
     return None
 
 
-def _weakness(messages: list[dict], max_tokens: int | None, *, defended: bool = False,
+def _weakness(messages: list[dict], max_tokens: int | None, *,
               response_format: object = None) -> tuple[str, str] | None:
     """(catalog ID, vulnerable answer) when a planted weakness matches the request, else None."""
     # B23 constrained-decoding: a model that honours structured output fills the constrained field even for a request it
@@ -180,7 +182,10 @@ def _weakness(messages: list[dict], max_tokens: int | None, *, defended: bool = 
     system = "\n".join(_text(m.get("content")) for m in messages if isinstance(m, dict) and m.get("role") == "system")
     raw = next((m.get("content") for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "user"), "")
     typed = _text(raw)
-    user = _decode_hidden(_decode_encodings(typed) if defended else typed)
+    # The positive control decodes obfuscated instructions (base64 / ROT13 / leet / homoglyph) and obeys them — a real
+    # encoding-jailbreak weakness (B2). In the defended profile the raw keyword filter (in respond) still blocks the
+    # plaintext form first, so an encoded payload is what slips past.
+    user = _decode_hidden(_decode_encodings(typed))
     low = user.lower()
     secret = m.group(1).rstrip(".,") if (m := SECRET_IN_SYSTEM.search(system)) else None
     in_image = isinstance(raw, list) and any(isinstance(p, dict) and p.get("type") == "image_url" for p in raw)
@@ -241,7 +246,7 @@ def respond(messages: list[dict], max_tokens: int | None = None, *, profile: str
                           if isinstance(m, dict) and m.get("role") == "user"), ""))
         if KEYWORD_FILTER.search(raw):  # plaintext attack caught by the cheap filter
             return REFUSAL
-    hit = _weakness(messages, max_tokens, defended=defended, response_format=response_format)
+    hit = _weakness(messages, max_tokens, response_format=response_format)
     if hit is not None:
         kind, answer = hit
         if profile == ALWAYS or (rng or random).random() < PROFILES[profile].get(kind, 0.0):

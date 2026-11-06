@@ -676,7 +676,7 @@ Each task carries a **build direction** (how to build it, with the specific tool
 - [ ] **Refresh H1 registry data** — build: scheduled job re-pulling PyPI/npm/crates/rubygems name sets. *Done when:* registry snapshot timestamp is < 7 days at scan time.
 - [ ] **Monthly re-attack + drift** — build: cron re-runs reference endpoints; store scores over time. *Done when:* a drift chart is produced each month.
 - [ ] **Quarterly judge recalibration** — build: refresh the labelled set; recompute precision/recall. *Done when:* updated accuracy table published.
-- [ ] **Track upstream releases** — build: watch garak/PyRIT/DeepTeam/PurpleLlama releases; re-run the coverage matrix on bump. *Done when:* a version bump triggers a matrix re-run in CI.
+- [x] **Track upstream releases** — build: watch garak/PyRIT/DeepTeam/PurpleLlama releases; re-run the coverage matrix on bump. *Done when:* a version bump triggers a matrix re-run in CI.
 
 
 ### 10.1 Traceability — every catalog item maps to a task and phase

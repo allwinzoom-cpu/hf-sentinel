@@ -121,6 +121,14 @@ def _load_api_reference(path):
     return names
 
 
+def _nli_scorer_from(url):
+    """Build the NLI scorer that enables H3/H4 from an operator-supplied NLI service URL; None when not given."""
+    if not url:
+        return None
+    from hfsentinel.halluc.nli import http_nli_scorer
+    return http_nli_scorer(url)
+
+
 _HALLUC_ECOSYSTEMS = {"pypi", "npm", "crates", "rubygems"}
 
 
@@ -364,6 +372,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
                                                        "--check-sycophancy/--no-check-sycophancy")] = None,
          check_calibration: Annotated[bool | None, _opt("Confidence-vs-correctness test (enables H7).", JDG,
                                                         "--check-calibration/--no-check-calibration")] = None,
+         nli_url: Annotated[str | None, _opt("NLI service URL for false-premise scoring (enables H3/H4).", JDG)] = None,
          sink_url: Annotated[str | None, _opt("Controlled https exfil sink.", JDG)] = None,
          with_firewall: Annotated[bool | None, _opt("Also run the guardrail differential.", JDG,
                                                     "--with-firewall/--without-firewall")] = None,
@@ -432,7 +441,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              reference_set=_load_memorization_refs(memorization_refs),
              halluc_ecosystems=_parse_halluc_registries(halluc_registries),
              api_reference=_load_api_reference(api_reference), check_citations=bool(check_citations),
-             check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration))
+             check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration),
+             nli_scorer=_nli_scorer_from(nli_url))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
@@ -509,7 +519,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              system_one_multilingual_url: str | None = None, use_judges: bool = False,
              reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
              api_reference: set[str] | None = None, check_citations: bool = False,
-             check_sycophancy: bool = False, check_calibration: bool = False) -> None:
+             check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -550,7 +560,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           library=library, controls=c, keep_transcripts=c.output.save_transcripts,
                           reference_set=reference_set, halluc_ecosystems=halluc_ecosystems,
                           api_reference=api_reference, check_citations=check_citations,
-                          check_sycophancy=check_sycophancy, check_calibration=check_calibration, progress=progress)
+                          check_sycophancy=check_sycophancy, check_calibration=check_calibration,
+                          nli_scorer=nli_scorer, progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "

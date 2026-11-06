@@ -80,7 +80,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  profile: TargetProfile | None = None, library: StrategyLibrary | None = None,
                  controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
-                 api_reference: set[str] | None = None,
+                 api_reference: set[str] | None = None, check_citations: bool = False,
                  progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
@@ -139,6 +139,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         _hallucination_stage(res, target, ecosystems=halluc_ecosystems, max_tokens=max_tokens)
     if api_reference:
         _fabricated_api_stage(res, target, known_apis=api_reference, max_tokens=max_tokens)
+    if check_citations:
+        _fabricated_citation_stage(res, target, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -271,6 +273,31 @@ def _fabricated_api_stage(res: CampaignResult, target, *, known_apis: set[str], 
     res.decide("S3", "H2", f"{run.hits}/{run.trials} fabricated API(s)",
                "named an API/method absent from the reference")
     res.decide("S5", "H2", "confirmed" if run.hits else "unconfirmed", "§2.2 reference-API oracle")
+
+
+def _fabricated_citation_stage(res: CampaignResult, target, *, max_tokens: int, verifier=None) -> None:
+    """H6: adversarially induce a source citation and flag any DOI/arXiv id the resolver cannot find (fabricated).
+    Produces a scored H6 run. URLs are never resolved (SSRF). Each prompt is a governed call."""
+    from hfsentinel.halluc.fuzzers import citation_exists, induce_citations
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def adapter(messages):
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        trials, fabricated = induce_citations(adapter, verifier or citation_exists)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "H6", "fabricated-citation stage stopped", "budget cap or target error")
+        return
+    run = TechniqueRun(catalog_id="H6", trials=trials, hits=len(fabricated), attempts=trials, planned_trials=trials)
+    for kind, value in fabricated:
+        run.proven.append(ProvenCase(sha256=_digest([{"kind": kind, "value": value}], value),
+                                     excerpt=f"fabricated citation: {kind}:{value}"[:200]))
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S3", "H6", f"{run.hits}/{run.trials} fabricated citation(s)",
+               "cited a source the resolver cannot find")
+    res.decide("S5", "H6", "confirmed" if run.hits else "unconfirmed", "§2.2 source-existence oracle")
 
 
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:

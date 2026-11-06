@@ -328,3 +328,16 @@ def test_fabricated_api_stage_scores_h2_against_the_vuln_target():
         assert h2 and h2[0].hits >= 1 and h2[0].proven
     finally:
         srv.shutdown()
+
+
+def test_fabricated_citation_stage_scores_h6_against_the_vuln_target():
+    """H6 scan stage: induce a citation and flag any DOI/arXiv the resolver cannot find (fabricated source)."""
+    from hfsentinel.engines.campaign import CampaignResult, _fabricated_citation_stage
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        res = CampaignResult()
+        _fabricated_citation_stage(res, _target(base), max_tokens=256, verifier=lambda kind, value: False)
+        h6 = [r for r in res.runs if r.catalog_id == "H6"]
+        assert h6 and h6[0].hits >= 1 and h6[0].proven
+    finally:
+        srv.shutdown()

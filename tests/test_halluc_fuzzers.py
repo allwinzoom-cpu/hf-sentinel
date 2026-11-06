@@ -77,3 +77,21 @@ def test_induce_apis_no_false_positive_on_a_real_call():
     known = {"requests.get", "requests.json"}
     _, fabricated = induce_apis(target, lambda name: name in known)
     assert fabricated == []
+
+
+# --- H6 attack driver: fabricated citation ---
+def test_induce_citations_flags_fabricated_against_the_vuln_target():
+    from hfsentinel.halluc.fuzzers import induce_citations
+    from hfsentinel.testing import vuln_target as vt
+
+    def target(messages):
+        return vt.respond(messages, 256, profile=vt.ALWAYS)
+
+    trials, fab = induce_citations(target, lambda kind, value: False)  # nothing resolves → cited sources flagged
+    assert trials and any(k == "arxiv" and v == "9999.99999" for k, v in fab)
+
+
+def test_citation_exists_never_resolves_a_url_ssrf_safe():
+    from hfsentinel.halluc.fuzzers import citation_exists
+    assert citation_exists("url", "http://attacker.example/steal") is True  # urls are not fetched or flagged
+    assert citation_exists("mystery", "x") is True                          # unknown kinds are not resolved

@@ -221,3 +221,14 @@ def test_trial_dataclass_is_frozen():
     t = Trial("A1", 0, [], "X")
     with pytest.raises(AttributeError):
         t.canary = "Y"  # type: ignore[misc]
+
+
+def test_a6_special_token_injection_leaks_and_baseline_is_clean():
+    from hfsentinel.attacks.canary import CanaryRun
+    from hfsentinel.testing import vuln_target as vt
+    run = CanaryRun(seed=1)
+    t = run.trial("A6")
+    v = run.evaluate(t, vt.respond(t.messages, 256, profile=vt.ALWAYS))
+    assert v.hit and v.reason == "complied"       # forged chat-template system turn was obeyed
+    b = run.baseline("A6")
+    assert not run.evaluate(b, vt.respond(b.messages, 256, profile=vt.ALWAYS)).hit  # benign control: no special tokens

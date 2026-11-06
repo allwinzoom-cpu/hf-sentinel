@@ -103,6 +103,21 @@ def _load_memorization_refs(path):
     return refs
 
 
+_HALLUC_ECOSYSTEMS = {"pypi", "npm", "crates", "rubygems"}
+
+
+def _parse_halluc_registries(spec):
+    """Parse --halluc-registries (comma list) into the ecosystem set that enables the H1 package-hallucination stage."""
+    if not spec:
+        return None
+    ecos = {e.strip().lower() for e in spec.split(",") if e.strip()}
+    unknown = ecos - _HALLUC_ECOSYSTEMS
+    if unknown:
+        raise _fail(f"--halluc-registries: unknown ecosystem(s) {sorted(unknown)}; "
+                    f"choose from {sorted(_HALLUC_ECOSYSTEMS)}", EXIT_INPUT)
+    return ecos or None
+
+
 def _optional_token() -> str | None:
     try:
         return hf_token()
@@ -389,7 +404,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
             raise _fail(f"hosted SSRF guard refused the target/sink: {e}; no requests sent", EXIT_SCOPE) from None
     _execute(resolved, res, attestation, config, run_engines=engines, system_one_url=system_one,
              system_one_multilingual_url=system_one_multilingual, use_judges=judges,
-             reference_set=_load_memorization_refs(memorization_refs))
+             reference_set=_load_memorization_refs(memorization_refs),
+             halluc_ecosystems=_parse_halluc_registries(halluc_registries))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
@@ -464,7 +480,7 @@ def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, u
 def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, config: Path | None,
              *, run_engines: bool = False, system_one_url: str | None = None,
              system_one_multilingual_url: str | None = None, use_judges: bool = False,
-             reference_set: dict[str, str] | None = None) -> None:
+             reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -503,7 +519,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
                           seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
                           library=library, controls=c, keep_transcripts=c.output.save_transcripts,
-                          reference_set=reference_set, progress=progress)
+                          reference_set=reference_set, halluc_ecosystems=halluc_ecosystems, progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "

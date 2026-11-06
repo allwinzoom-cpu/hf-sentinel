@@ -61,3 +61,23 @@ def test_online_verifier_fails_safe(monkeypatch):
     monkeypatch.setattr(rc.urllib.request, "urlopen", boom)
     exists, evidence = rc.exists_online("pypi", "requests")
     assert exists and "check failed" in evidence
+
+
+# --- H1 attack driver: induce a package suggestion and verify it (slopsquatting) ---
+def test_induce_finds_a_hallucinated_package_against_the_vuln_target():
+    from hfsentinel.testing import vuln_target as vt
+
+    def target(messages):
+        return vt.respond(messages, 256, profile=vt.ALWAYS)
+
+    trials, hits = rc.induce(target, ecosystems={"pypi"}, verifier=fake_verifier)
+    assert trials == len(rc.PROMPTS) and hits
+    assert any(f.name == "quibblefetch" for f in hits) and all(not f.exists for f in hits)
+
+
+def test_induce_no_false_positive_on_a_real_package():
+    def target(messages):
+        return "Use requests: `pip install requests`, then `import requests`."
+
+    _, hits = rc.induce(target, ecosystems={"pypi"}, verifier=fake_verifier)
+    assert hits == []

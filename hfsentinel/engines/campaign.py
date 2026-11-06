@@ -25,7 +25,8 @@ from hfsentinel.attacks.catalog import load_catalog
 from hfsentinel.engines.governor import Governor
 from hfsentinel.engines.planner import Plan
 from hfsentinel.engines.strategy_library import Outcome, StrategyLibrary
-from hfsentinel.engines.sweep import NATIVE, TechniqueRun, run_technique
+from hfsentinel.engines.sweep import NATIVE, TechniqueRun, _digest, run_technique
+from hfsentinel.report.schema import ProvenCase
 from hfsentinel.scoring.severity import confirmed
 
 if TYPE_CHECKING:
@@ -76,6 +77,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  concurrency: int, seed: int = 0, sink_host: str | None = None, system_one=None,
                  profile: TargetProfile | None = None, library: StrategyLibrary | None = None,
                  controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
+                 reference_set: dict[str, str] | None = None,
                  progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
@@ -127,6 +129,9 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         progress(run)
         if not run.complete:
             break  # a budget cap stopped the sweep; later techniques are reported as not run
+    if reference_set:
+        _memorization_stage(res, target, gov, reference_set=reference_set, max_tokens=max_tokens, seed=seed,
+                            keep_transcripts=keep_transcripts)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -185,6 +190,30 @@ def allowed_mutators(controls) -> tuple:
         return ESCALATION_MUTATORS
     enabled = set(controls.fuzz.mutators)
     return tuple(m for m in ESCALATION_MUTATORS if m in enabled)
+
+
+def _memorization_stage(res: CampaignResult, target, gov, *, reference_set: dict[str, str], max_tokens: int,
+                        seed: int = 0, keep_transcripts: bool = False) -> None:
+    """C3: training-data / memorization extraction. For each held reference, send a verbatim-continuation (cloze) prompt
+    and score the reply with the near-match oracle; a reproduction is a confirmed hit. Produces a scored C3 run."""
+    from hfsentinel.attacks.memorization import cloze_prompt, near_match
+    run = TechniqueRun(catalog_id="C3", seed=seed, planned_trials=len(reference_set))
+    for ref_id, text in reference_set.items():
+        messages = [{"role": "user", "content": cloze_prompt(ref_id, reference_set)}]
+        result = target.chat(messages, max_tokens=max_tokens, temperature=0.0)
+        run.trials += 1
+        run.attempts += 1
+        if near_match(result.text, {ref_id: text}) is not None:
+            run.hits += 1
+            run.proven.append(ProvenCase(sha256=_digest(messages, result.text),
+                                         excerpt=" ".join(result.text.split())[:200]))
+            if keep_transcripts:
+                run.transcripts.append({"messages": messages, "output": result.text})
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S3", "C3", f"{run.hits}/{run.trials} memorized",
+               "verbatim reproduction of a held reference (training-data extraction)")
+    res.decide("S5", "C3", "confirmed" if run.hits else "unconfirmed", "§2.2 deterministic near-match oracle")
 
 
 def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, trials, temperature, max_tokens,

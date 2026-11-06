@@ -243,3 +243,31 @@ def test_s4_skipped_without_a_filter():
         assert res.escalations == [] and res.depth_requests == 0  # no filter observed → no escalation
     finally:
         srv.shutdown()
+
+
+def test_memorization_stage_finds_c3_against_the_vuln_target():
+    """C3 campaign wiring: with a held reference set, run_campaign runs the memorization-extraction stage and scores it."""
+    from hfsentinel.attacks.memorization import PLANTED_REFERENCE
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        plan, controls = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 5)
+        gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=4)
+        res = run_campaign(_target(base), gov, plan, trials=5, temperature=0.7, max_tokens=256, concurrency=4,
+                           seed=0, controls=controls, reference_set=PLANTED_REFERENCE)
+        c3 = [r for r in res.runs if r.catalog_id == "C3"]
+        assert c3 and c3[0].hits >= 1 and c3[0].proven            # a planted passage was reproduced verbatim
+        assert c3[0].trials == len(PLANTED_REFERENCE)
+    finally:
+        srv.shutdown()
+
+
+def test_no_memorization_stage_without_a_reference_set():
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        plan, controls = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 5)
+        gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=4)
+        res = run_campaign(_target(base), gov, plan, trials=5, temperature=0.7, max_tokens=64, concurrency=4,
+                           seed=0, controls=controls)
+        assert not any(r.catalog_id == "C3" for r in res.runs)    # C3 runs only when the operator supplies references
+    finally:
+        srv.shutdown()

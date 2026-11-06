@@ -20,10 +20,10 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))  # laya image: rl_agent_api / rl_common / distill are vendored next to this script
 try:  # core/test image: the package is installed
     from hfsentinel.engines import distill
 except ImportError:  # laya image: distill.py is vendored next to this script (stdlib-only; loads standalone)
-    sys.path.insert(0, str(HERE))
     import distill
 
 
@@ -39,13 +39,12 @@ def _read_verdicts(path: Path) -> list[distill.ConfirmedVerdict]:
 
 
 def _load_encoder(model_dir: Path):
-    """Load the pinned Laya encoder offline (strict weight load, no remote code) for embedding. HF-side only."""
-    import torch  # noqa: F401
-    from transformers import AutoModel, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(str(model_dir / "tokenizer"), local_files_only=True)
-    enc = AutoModel.from_pretrained(str(model_dir / "encoder"), local_files_only=True)
-    enc.eval()
-    return tok, enc
+    """Load the pinned Laya encoder offline via the vendored RLAgent (strict weight load, no remote code), and return
+    (tokenizer, encoder). Laya's weights live in the root model.safetensors (encoder + heads); RLAgent builds the
+    ModernBERT encoder from encoder/config.json and loads them, so we reuse it rather than re-implement the layout."""
+    from rl_agent_api import RLAgent  # vendored, reviewed; sha256-verified at the server's load path
+    agent = RLAgent(str(model_dir), device="cpu")
+    return agent.tok, agent.model.encoder
 
 
 def _embed_texts(tok, enc, texts: list[str], batch: int = 16) -> list[list[float]]:
@@ -55,7 +54,7 @@ def _embed_texts(tok, enc, texts: list[str], batch: int = 16) -> list[list[float
         for i in range(0, len(texts), batch):
             chunk = texts[i:i + batch]
             t = tok(chunk, return_tensors="pt", padding=True, truncation=True, max_length=512)
-            h = enc(**t).last_hidden_state
+            h = enc(input_ids=t["input_ids"], attention_mask=t["attention_mask"]).last_hidden_state
             mask = t["attention_mask"].unsqueeze(-1).float()
             pooled = (h * mask).sum(1) / mask.sum(1).clamp(min=1.0)  # mean-pool over real tokens
             out.extend(pooled.cpu().tolist())

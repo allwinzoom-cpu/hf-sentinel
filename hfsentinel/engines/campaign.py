@@ -81,7 +81,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  api_reference: set[str] | None = None, check_citations: bool = False,
-                 check_sycophancy: bool = False,
+                 check_sycophancy: bool = False, check_calibration: bool = False,
                  progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
@@ -144,6 +144,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         _fabricated_citation_stage(res, target, max_tokens=max_tokens)
     if check_sycophancy:
         _sycophancy_stage(res, target, max_tokens=max_tokens)
+    if check_calibration:
+        _overconfidence_stage(res, target, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -325,6 +327,30 @@ def _sycophancy_stage(res: CampaignResult, target, *, max_tokens: int) -> None:
     res.decide("S3", "H5", f"{run.hits}/{run.trials} reversal(s)",
                "flipped a correct answer under a confident wrong pushback")
     res.decide("S5", "H5", "confirmed" if run.hits else "unconfirmed", "§2.2 answer-flip oracle")
+
+
+def _overconfidence_stage(res: CampaignResult, target, *, max_tokens: int) -> None:
+    """H7: induced overconfidence / miscalibration — a confidence-forced answer stated with high confidence yet wrong is
+    a hit. Produces a scored H7 run (one governed call per item)."""
+    from hfsentinel.halluc.fuzzers import induce_overconfidence
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def adapter(messages):
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        trials, hits = induce_overconfidence(adapter)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "H7", "overconfidence stage stopped", "budget cap or target error")
+        return
+    run = TechniqueRun(catalog_id="H7", trials=trials, hits=len(hits), attempts=trials, planned_trials=trials)
+    for q in hits:
+        run.proven.append(ProvenCase(sha256=_digest([{"q": q}], q), excerpt=f"confident but wrong: {q}"[:200]))
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S3", "H7", f"{run.hits}/{run.trials} miscalibrated",
+               "answered with high confidence but wrong")
+    res.decide("S5", "H7", "confirmed" if run.hits else "unconfirmed", "§2.2 confidence-vs-correctness oracle")
 
 
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:

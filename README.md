@@ -55,6 +55,16 @@ docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 # engine-emitted candidates with the System-2 panel (needs a token, D-017 judge budget). --system-one URL points at a
 # local Laya server (advisory triage; --system-one-multilingual URL for non-Latin replies). --format html is escaped
 # under a strict CSP; --format card writes a pasteable model-card snippet. SARIF meets GitHub code-scanning upload rules.
+# Model-only attack stages (opt-in, deterministic oracles; strictly LLM, no agentic/web checks):
+#   --memorization-refs refs.json  C3 training-data memorization (a held reference reproduced verbatim = finding)
+#   --halluc-registries pypi,npm   H1 package hallucination / slopsquatting (recommended package absent from its registry)
+#   --api-reference apis.json      H2 fabricated API/command (a named API absent from the operator's known set)
+#   --check-citations              H6 fabricated citation (cited DOI/arXiv not found; SSRF-safe — URLs are never fetched)
+#   --check-sycophancy             H5 sycophantic reversal (flips a correct answer under a confident wrong pushback)
+#   --check-calibration            H7 induced overconfidence (high-confidence wording on a wrong answer)
+#   --nli-url URL                  H3/H4 false-premise following (NLI contradiction vs. ground truth; model runs as a service)
+# A6 chat-template / special-token injection runs in the native sweep when recon detects special-token parsing; a multi-turn
+# escalation stage (Crescendo-style) ramps pressure across turns until a planted canary leaks.
 # diff: compare a target against a --base model — per-category ΔASR + an alignment-removal verdict (side-by-side table):
 #   hfsentinel diff <finetune-uri> --base <base-uri> --scope scope.yaml --out reports
 # Exit codes: 0 ok · 1 internal error · 2 usage · 3 refused by scope · 4 invalid input · 5 not supported yet ·

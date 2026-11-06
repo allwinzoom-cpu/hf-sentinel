@@ -16,80 +16,171 @@
       "name": "deterministic-canary-injection-oracles",
       "owner": "built-by-us",
       "component": "hfsentinel/attacks/canary.py",
-      "catalog_ids": ["A1", "A2", "A3", "A4", "A5", "A6", "C2"],
-      "fallbacks": ["probe-suite"],
+      "catalog_ids": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "C2"
+      ],
+      "fallbacks": [
+        "probe-suite"
+      ],
       "evidence": "Canary oracles are precise, deterministic and free; verified on the vuln target. garak promptinject/latentinjection/encoding is a named fallback (A1 4/4 true positive) but adds no scoring precision."
     },
     {
       "name": "active-content-and-resource-oracles",
       "owner": "built-by-us",
       "component": "hfsentinel/judges/active_content.py + hfsentinel/attacks/category_e.py",
-      "catalog_ids": ["E1", "E3", "E5"],
-      "fallbacks": ["probe-suite"],
+      "catalog_ids": [
+        "E1",
+        "E3",
+        "E5"
+      ],
+      "fallbacks": [
+        "probe-suite"
+      ],
       "evidence": "Deterministic render/budget/signature checks. garak web_injection/malwaregen is a fallback but false-positive-prone against a non-vulnerable target (malwaregen.AnyCode flags any code), so not the owner."
     },
     {
       "name": "insecure-code-scanner",
       "owner": "guard-suite",
       "component": "hfsentinel/judges/code_sinks.py (sink rules, native fast path)",
-      "catalog_ids": ["E2"],
-      "fallbacks": ["built-by-us"],
-      "inventory": ["scanner_types:CODE_SHIELD", "code_scanner:CodeShield.scan_code"],
+      "catalog_ids": [
+        "E2"
+      ],
+      "fallbacks": [
+        "built-by-us"
+      ],
+      "inventory": [
+        "scanner_types:CODE_SHIELD",
+        "code_scanner:CodeShield.scan_code"
+      ],
       "evidence": "guard-suite owns the insecure-code scanner combined with our sink rules (scorecard decision). Native code_sinks runs the fast path in the breadth sweep; the CodeShield deep scan is the deferred heavy path."
     },
     {
       "name": "extraction-and-memorization-oracles",
       "owner": "built-by-us",
       "component": "hfsentinel/attacks/canary.py + hfsentinel/attacks/memorization.py",
-      "catalog_ids": ["C1", "C3", "C4"],
-      "fallbacks": ["extractor", "probe-suite"],
+      "catalog_ids": [
+        "C1",
+        "C3",
+        "C4"
+      ],
+      "fallbacks": [
+        "extractor",
+        "probe-suite"
+      ],
       "evidence": "Native canary/near-match oracles score extraction. extractor (promptmap) is the C1 payload-corpus fallback (borrow); garak leakreplay is the C3 fallback (0 true positives on the vuln target without a planted reference)."
     },
     {
       "name": "glitch-anomaly-oracle",
       "owner": "built-by-us",
       "component": "hfsentinel/attacks/glitch.py",
-      "catalog_ids": ["B22"],
-      "fallbacks": ["probe-suite"],
+      "catalog_ids": [
+        "B22"
+      ],
+      "fallbacks": [
+        "probe-suite"
+      ],
       "evidence": "Native behaviour-change-vs-control oracle. garak glitch.Glitch is a fallback but goodside.Glitch reports false positives against a non-glitch-susceptible target (4/4 on the vuln target), so it does not own scoring."
     },
     {
       "name": "hallucination-oracles",
       "owner": "built-by-us",
       "component": "hfsentinel/halluc/*.py",
-      "catalog_ids": ["H1", "H2", "H3", "H4", "H5", "H6", "H7"],
-      "fallbacks": ["probe-suite"],
+      "catalog_ids": [
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "H7"
+      ],
+      "fallbacks": [
+        "probe-suite"
+      ],
       "evidence": "Native registry/NLI/fuzzer oracles. garak packagehallucination is an H1 fallback."
     },
     {
       "name": "agentic-tool-abuse-oracles",
       "owner": "built-by-us",
       "component": "hfsentinel/agents/*.py (mock-tool call-log)",
-      "catalog_ids": ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "E4"],
-      "fallbacks": ["agent-bench"],
+      "catalog_ids": [
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D7",
+        "E4"
+      ],
+      "fallbacks": [
+        "agent-bench"
+      ],
       "evidence": "Native deterministic call-log oracles over the mock-tool env. agent-bench (AgentDojo) is the fallback benchmark for a real tool-calling target."
     },
     {
       "name": "static-jailbreak-probe-breadth",
       "owner": "probe-suite",
-      "catalog_ids": ["B1", "B3", "B5", "B6", "B9", "B12", "B15", "B16", "B17", "B18", "B19", "B21"],
-      "fallbacks": ["orchestrator"],
-      "inventory": ["probes:dan.Dan_11_0", "probes:promptinject.HijackHateHumans", "detectors:promptinject.AttackRogueString"],
+      "catalog_ids": [
+        "B1",
+        "B3",
+        "B5",
+        "B6",
+        "B9",
+        "B12",
+        "B15",
+        "B16",
+        "B17",
+        "B18",
+        "B19",
+        "B21"
+      ],
+      "fallbacks": [
+        "orchestrator"
+      ],
+      "inventory": [
+        "probes:dan.Dan_11_0",
+        "probes:promptinject.HijackHateHumans",
+        "detectors:promptinject.AttackRogueString"
+      ],
       "evidence": "garak owns static probe breadth with deterministic detectors (scorecard). B1 wired + verified (dan 1/1 true positive); the rest are deferred pending probe/template wiring."
     },
     {
       "name": "adaptive-multi-turn-and-converters",
       "owner": "orchestrator",
-      "catalog_ids": ["B2", "B4", "B7", "B8", "B10", "B11", "B13", "B14", "B20"],
-      "fallbacks": ["probe-suite"],
-      "inventory": ["attacks:CrescendoAttack", "converters:AcrosticConverter"],
+      "catalog_ids": [
+        "B2",
+        "B4",
+        "B7",
+        "B8",
+        "B10",
+        "B11",
+        "B13",
+        "B14",
+        "B20"
+      ],
+      "fallbacks": [
+        "probe-suite"
+      ],
+      "inventory": [
+        "attacks:CrescendoAttack",
+        "converters:AcrosticConverter"
+      ],
       "evidence": "PyRIT owns composable converters and multi-turn search (scorecard). B2 wired; multi-turn/search techniques deferred pending orchestration wiring."
     },
     {
       "name": "constrained-decoding-oracle",
       "owner": "built-by-us",
       "component": "hfsentinel/attacks/cda.py",
-      "catalog_ids": ["B23"],
+      "catalog_ids": [
+        "B23"
+      ],
       "fallbacks": [],
       "evidence": "Native deterministic constrained-decoding reproduction oracle; candidate (experimental, never scored)."
     },
@@ -98,7 +189,10 @@
       "owner": "agent-bench",
       "catalog_ids": [],
       "fallbacks": [],
-      "inventory": ["suites:banking", "attacks:direct"],
+      "inventory": [
+        "suites:banking",
+        "attacks:direct"
+      ],
       "evidence": "AgentDojo owns stateful agent environments with deterministic oracles and baseline/attack arms (utility + ASR). Complements the native mock-tool D oracles; needs a tool-calling target."
     },
     {
@@ -113,7 +207,10 @@
       "owner": "extractor",
       "catalog_ids": [],
       "fallbacks": [],
-      "inventory": ["rule_types:distraction", "rule_types:harmful"],
+      "inventory": [
+        "rule_types:distraction",
+        "rule_types:harmful"
+      ],
       "evidence": "promptmap owns the C1 payload corpus (borrow); the native canary oracle scores its outputs."
     },
     {
@@ -121,7 +218,9 @@
       "owner": "rubric-judge",
       "catalog_ids": [],
       "fallbacks": [],
-      "inventory": ["evaluators:gpt4_judge"],
+      "inventory": [
+        "evaluators:gpt4_judge"
+      ],
       "evidence": "strong_reject owns the rubric template (borrow); a frontier judge that passes the human-label gate runs it."
     },
     {
@@ -129,7 +228,9 @@
       "owner": "built-by-us",
       "component": "hfsentinel/attacks/mutators.py",
       "catalog_ids": [],
-      "fallbacks": ["orchestrator"],
+      "fallbacks": [
+        "orchestrator"
+      ],
       "evidence": "Native canary-preserving S4 transforms (base64/ROT13/leet/homoglyph/unicode-tag/bijection/flipattack/artprompt). PyRIT converters are the fallback."
     },
     {
@@ -150,22 +251,62 @@
     }
   ],
   "status": {
-    "A1": "wired", "A2": "wired", "A3": "wired", "A4": "conditional", "A5": "wired", "A6": "conditional",
-    "B1": "engine-wired", "B2": "engine-wired", "B3": "deferred", "B4": "deferred", "B5": "deferred",
-    "B6": "experimental", "B7": "deferred", "B8": "experimental", "B9": "experimental", "B10": "experimental",
-    "B11": "experimental", "B12": "deferred", "B13": "deferred", "B14": "experimental", "B15": "deferred",
-    "B16": "experimental", "B17": "deferred", "B18": "experimental", "B19": "deferred", "B20": "deferred",
-    "B21": "deferred", "B22": "oracle-only", "B23": "experimental",
-    "C1": "oracle-only", "C2": "wired", "C3": "oracle-only", "C4": "conditional",
-    "D1": "oracle-only", "D2": "oracle-only", "D3": "oracle-only", "D4": "oracle-only", "D5": "oracle-only",
-    "D6": "oracle-only", "D7": "oracle-only",
-    "E1": "wired", "E2": "wired", "E3": "wired", "E4": "oracle-only", "E5": "oracle-only",
-    "H1": "oracle-only", "H2": "conditional", "H3": "oracle-only", "H4": "oracle-only", "H5": "conditional",
-    "H6": "conditional", "H7": "conditional"
+    "A1": "wired",
+    "A2": "wired",
+    "A3": "wired",
+    "A4": "conditional",
+    "A5": "wired",
+    "A6": "conditional",
+    "B1": "engine-wired",
+    "B2": "engine-wired",
+    "B3": "deferred",
+    "B4": "deferred",
+    "B5": "deferred",
+    "B6": "experimental",
+    "B7": "deferred",
+    "B8": "experimental",
+    "B9": "experimental",
+    "B10": "experimental",
+    "B11": "experimental",
+    "B12": "deferred",
+    "B13": "deferred",
+    "B14": "experimental",
+    "B15": "deferred",
+    "B16": "experimental",
+    "B17": "deferred",
+    "B18": "experimental",
+    "B19": "deferred",
+    "B20": "deferred",
+    "B21": "deferred",
+    "B22": "oracle-only",
+    "B23": "experimental",
+    "C1": "oracle-only",
+    "C2": "wired",
+    "C3": "conditional",
+    "C4": "conditional",
+    "D1": "oracle-only",
+    "D2": "oracle-only",
+    "D3": "oracle-only",
+    "D4": "oracle-only",
+    "D5": "oracle-only",
+    "D6": "oracle-only",
+    "D7": "oracle-only",
+    "E1": "wired",
+    "E2": "wired",
+    "E3": "wired",
+    "E4": "oracle-only",
+    "E5": "oracle-only",
+    "H1": "conditional",
+    "H2": "conditional",
+    "H3": "conditional",
+    "H4": "conditional",
+    "H5": "conditional",
+    "H6": "conditional",
+    "H7": "conditional"
   },
   "deferred_reasons": {
     "A4": "conditional: multimodal input accepted",
-    "A6": "conditional: chat-templated target that parses special tokens",
+    "A6": "native breadth sweep; runs when recon detects special_token_parsing (chat-template injection)",
     "B3": "garak static-breadth / templated battery (641) wiring pending",
     "B4": "PyRIT multi-turn (Crescendo) wiring pending (643)",
     "B5": "garak static-breadth wiring pending",
@@ -188,7 +329,7 @@
     "B22": "native glitch oracle built + tested; attack generation not in breadth sweep",
     "B23": "candidate; experimental, never scored (constrained decoding)",
     "C1": "native canary oracle built + tested; payload corpus via extractor, not in breadth sweep",
-    "C3": "native memorization oracle + cloze-extraction attack built + tested (attacks/memorization.py: extract); needs a held reference set; not yet in the breadth sweep",
+    "C3": "scan stage via --memorization-refs (operator-held reference set)",
     "C4": "conditional: target has cross-session memory",
     "D1": "runtime: tool-enabled target or mock-tool env (oracle tested via fixtures)",
     "D2": "runtime: tool-enabled target or mock-tool env (oracle tested via fixtures)",
@@ -199,12 +340,12 @@
     "D7": "runtime: browse/HTTP tool + controlled sink (oracle tested via fixtures)",
     "E4": "runtime: tool loop possible (native loop-cap oracle tested via fixtures)",
     "E5": "native active-content oracle built + tested; not in breadth sweep",
-    "H1": "native registry oracle built + tested; run via hallucination profile",
-    "H2": "conditional: reference oracle for the command/API",
-    "H3": "native NLI oracle built + tested; run via hallucination profile",
-    "H4": "native oracle built + tested; run via hallucination profile",
-    "H5": "conditional: multi-turn",
-    "H6": "conditional: source-existence oracle",
-    "H7": "conditional: ground-truth + calibration readout"
+    "H1": "scan stage via --halluc-registries (live registry check)",
+    "H2": "scan stage via --api-reference (operator known-API set)",
+    "H3": "scan stage via --nli-url (operator NLI service)",
+    "H4": "scan stage via --nli-url (shares the NLI false-premise oracle)",
+    "H5": "scan stage via --check-sycophancy (two-turn answer-flip)",
+    "H6": "scan stage via --check-citations (DOI/arXiv resolver, SSRF-safe)",
+    "H7": "scan stage via --check-calibration (confidence vs correctness)"
   }
 }

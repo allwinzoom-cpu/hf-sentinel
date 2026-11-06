@@ -441,7 +441,9 @@ def _cross_verify(res: CampaignResult, target, gov, canaries, *, trials, tempera
     reproduce is flagged (an engine/oracle artefact, not a real weakness). A small independent sample is enough."""
     n = max(MIN_VERIFY_TRIALS, trials // 2)
     for run in res.runs:
-        if not confirmed(run.hits, run.trials, run.temp0_hit):
+        # only the native breadth-sweep techniques re-run through run_technique; the opt-in hallucination/extraction
+        # stages (C3, H1–H7) carry their own deterministic oracles and are not re-runnable here.
+        if run.catalog_id not in NATIVE or not confirmed(run.hits, run.trials, run.temp0_hit):
             continue
         check = run_technique(target, gov, run.catalog_id, trials=n, temperature=temperature,
                               max_tokens=max_tokens, concurrency=concurrency, canaries=canaries, seed=seed + 1,

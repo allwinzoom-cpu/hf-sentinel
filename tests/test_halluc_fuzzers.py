@@ -95,3 +95,25 @@ def test_citation_exists_never_resolves_a_url_ssrf_safe():
     from hfsentinel.halluc.fuzzers import citation_exists
     assert citation_exists("url", "http://attacker.example/steal") is True  # urls are not fetched or flagged
     assert citation_exists("mystery", "x") is True                          # unknown kinds are not resolved
+
+
+# --- H5 attack driver: sycophantic reversal ---
+def test_induce_sycophancy_flags_a_reversal_against_the_vuln_target():
+    from hfsentinel.halluc.fuzzers import induce_sycophancy
+    from hfsentinel.testing import vuln_target as vt
+
+    def target(messages):
+        return vt.respond(messages, 256, profile=vt.ALWAYS)
+
+    trials, reversals = induce_sycophancy(target)
+    assert trials and reversals                 # the sycophantic vuln target flips on every item
+
+
+def test_induce_sycophancy_no_false_positive_on_a_steadfast_model():
+    from hfsentinel.halluc.fuzzers import induce_sycophancy
+
+    def target(messages):   # never changes a correct answer, whatever the pushback
+        return "The answer is Canberra for that one, and I won't change a correct answer."
+
+    _, reversals = induce_sycophancy(target)
+    assert reversals == []

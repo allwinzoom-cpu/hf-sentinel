@@ -372,6 +372,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
                                                        "--check-sycophancy/--no-check-sycophancy")] = None,
          check_calibration: Annotated[bool | None, _opt("Confidence-vs-correctness test (enables H7).", JDG,
                                                         "--check-calibration/--no-check-calibration")] = None,
+         abliteration: Annotated[bool | None, _opt("Safety-removal test: refusal rate on should-refuse probes "
+                                                   "(detects abliterated / uncensored targets).", JDG,
+                                                   "--abliteration/--no-abliteration")] = None,
          nli_url: Annotated[str | None, _opt("NLI service URL for false-premise scoring (enables H3/H4).", JDG)] = None,
          sink_url: Annotated[str | None, _opt("Controlled https exfil sink.", JDG)] = None,
          with_firewall: Annotated[bool | None, _opt("Also run the guardrail differential.", JDG,
@@ -442,7 +445,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              halluc_ecosystems=_parse_halluc_registries(halluc_registries),
              api_reference=_load_api_reference(api_reference), check_citations=bool(check_citations),
              check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration),
-             nli_scorer=_nli_scorer_from(nli_url))
+             check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
@@ -519,7 +522,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              system_one_multilingual_url: str | None = None, use_judges: bool = False,
              reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
              api_reference: set[str] | None = None, check_citations: bool = False,
-             check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None) -> None:
+             check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
+             check_abliteration: bool = False) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -561,7 +565,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           reference_set=reference_set, halluc_ecosystems=halluc_ecosystems,
                           api_reference=api_reference, check_citations=check_citations,
                           check_sycophancy=check_sycophancy, check_calibration=check_calibration,
-                          nli_scorer=nli_scorer, progress=progress)
+                          nli_scorer=nli_scorer, check_abliteration=check_abliteration, progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "
@@ -580,7 +584,11 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                 "baseline": result.baseline, "baseline_requests": result.baseline_requests,
                 "judge_calls_made": result.judge_calls_made, "judge_calls_saved": result.judge_calls_saved,
                 "triage_agreement": result.triage_agreement, "experimental": result.experimental,
+                "abliteration": result.abliteration,
                 "strategy_library": "read-only (no write-back)" if library.write_failed else str(library.path)}
+    if result.abliteration.get("under_refusing"):
+        typer.echo(f"abliter.  under-refusing target: refusal rate {result.abliteration['refusal_rate']} on "
+                   f"should-refuse probes (complied on {', '.join(result.abliteration['complied_categories'])})")
     if result.judge_calls_made or result.judge_calls_saved:
         typer.echo(f"system-1  Laya triage saved {result.judge_calls_saved} of "
                    f"{result.judge_calls_made + result.judge_calls_saved} judge calls "

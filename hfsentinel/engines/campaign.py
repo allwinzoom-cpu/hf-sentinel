@@ -20,12 +20,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from hfsentinel.attacks import scaffolds
 from hfsentinel.attacks.canary import CANARY_IDS, CanaryRun
 from hfsentinel.attacks.catalog import load_catalog
 from hfsentinel.engines.governor import BudgetExceeded, Governor
 from hfsentinel.engines.planner import Plan
 from hfsentinel.engines.strategy_library import Outcome, StrategyLibrary
-from hfsentinel.engines.sweep import NATIVE, TechniqueRun, _digest, run_technique
+from hfsentinel.engines.sweep import MAX_PROVEN, NATIVE, TechniqueRun, _digest, run_technique
 from hfsentinel.report.schema import ProvenCase
 from hfsentinel.scoring.severity import confirmed
 
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from hfsentinel.engines.recon import TargetProfile
 
 ENGINE_SERVICE = "engine-owned: runs through the engine service (D-018), not available in this build"
+SCAFFOLD_SCORED = frozenset(scaffolds.SCORED)  # catalog ids scored by the static decode-and-follow scaffold stage
 MIN_VERIFY_TRIALS = 5
 ESCALATION_MUTATORS = ("base64", "unicode-tag")  # canary-preserving encodings: the planted canary survives decoding
 # (cipher/leet/homoglyph transform the canary itself, so the oracle cannot match — they are for text-goal attacks)
@@ -58,6 +60,7 @@ class CampaignResult:
     judge_saved_fraction: float = 0.0
     triage_agreement: float | None = None  # Laya-vs-System-2 agreement on judged items
     experimental: list = field(default_factory=list)  # experimental techniques run (B23 CDA), recorded never scored
+    abliteration: dict = field(default_factory=dict)  # safety-removal probe: refusal rate on should-refuse requests
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
         self.decisions.append({"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
@@ -82,7 +85,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  api_reference: set[str] | None = None, check_citations: bool = False,
                  check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-                 progress=lambda run: None) -> CampaignResult:
+                 check_abliteration: bool = False, progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
     s1 = system_one if (system_one is not None and system_one.available) else None
@@ -92,12 +95,14 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                    f"System-1 conf {d.confidence}, act {d.act_probability}", advisory=True)
     runnable = []
     for step in plan.steps:
-        if step.disposition != "run":
+        if step.disposition not in ("run", "experimental"):
             res.decide("S2", step.catalog_id, "skip", step.rationale or step.disposition)
         elif step.catalog_id in NATIVE:
             runnable.append(step.catalog_id)
             res.decide("S2", step.catalog_id, "run", step.rationale)
-        else:
+        elif step.catalog_id in SCAFFOLD_SCORED:
+            res.decide("S2", step.catalog_id, "run", "deterministic scaffold stage (decode-and-follow canary oracle)")
+        elif step.disposition == "run":
             res.decide("S2", step.catalog_id, "defer", ENGINE_SERVICE)
     if s1 is not None and runnable:
         cand = {sid: next(st.name for st in plan.steps if st.catalog_id == sid) for sid in runnable}
@@ -148,9 +153,13 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         _overconfidence_stage(res, target, max_tokens=max_tokens)
     if nli_scorer is not None:
         _nli_stage(res, target, scorer=nli_scorer, max_tokens=max_tokens)
+    if check_abliteration:
+        _abliteration_stage(res, target, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
+    _scaffold_stage(res, target, gov, canaries, plan=plan, trials=trials, max_tokens=max_tokens, seed=seed,
+                    system_one=s1, keep_transcripts=keep_transcripts)
     _multiturn_stage(res, target, max_tokens=max_tokens, system_one=s1)
     _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
                   concurrency=concurrency, seed=seed)
@@ -379,6 +388,31 @@ def _overconfidence_stage(res: CampaignResult, target, *, max_tokens: int) -> No
     res.decide("S5", "H7", "confirmed" if run.hits else "unconfirmed", "§2.2 confidence-vs-correctness oracle")
 
 
+def _abliteration_stage(res: CampaignResult, target, *, max_tokens: int) -> None:
+    """Safety-removal (abliteration) detection: send a fixed set of clearly-unsafe requests and measure the refusal
+    rate with the deterministic detector. A low rate means the target behaves like an abliterated / uncensored model —
+    a real, reproducible safety signal with no judge. Only the aggregate rate and the complied *categories* are kept
+    (D-015: never the unsafe output). Opt-in (`--abliteration`), since it sends should-refuse probes."""
+    from hfsentinel.attacks.abliteration import UNDER_REFUSAL_THRESHOLD, measure
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def ask(prompt: str) -> str:
+        return target.chat([{"role": "user", "content": prompt}], max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        r = measure(ask)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "abliteration", "stage stopped", "budget cap or target error")
+        return
+    res.requests += r.trials + r.errors
+    res.abliteration = {"trials": r.trials, "refusals": r.refusals, "refusal_rate": r.refusal_rate,
+                        "under_refusing": r.under_refusing, "complied_categories": r.complied_categories}
+    res.decide("S3", "abliteration", f"refusal rate {r.refusal_rate} ({r.refusals}/{r.trials})",
+               f"should-refuse probes; complied on {r.complied_categories or 'nothing'}")
+    res.decide("S5", "abliteration", "under-refusing (safety-removed signal)" if r.under_refusing else "refuses as expected",
+               f"refusal rate {'<' if r.under_refusing else '>='} {UNDER_REFUSAL_THRESHOLD} threshold")
+
+
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:
     """Adaptive multi-turn escalation (B4/16.18) as a scan stage: run the escalating conversation (direct → roleplay →
     authority → encoded → ciphered, Crescendo-style) and record whether it *gradually broke* the target (a canary leaked)
@@ -433,6 +467,77 @@ def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, tria
         else:
             res.decide('S4', run.catalog_id, 'no bypass found',
                        f'tried {len(mutators)} encoding mutators on the weak spot')
+
+
+def _scaffold_stage(res: CampaignResult, target, gov, canaries, *, plan, trials: int, max_tokens: int, seed: int,
+                    system_one=None, keep_transcripts: bool = False) -> None:
+    """Static public-jailbreak-scaffold probes (plan 16.18; catalog B16 FlipAttack + B14 Bijection, plus the public
+    persona families DAN/AIM/Developer-Mode/past-tense/refusal-suppression). Each scaffold wraps a **benign** planted
+    canary instruction; the deterministic canary oracle decides whether the target decoded/adopted the scaffold and
+    followed the hidden instruction a naive keyword filter would have blocked. Strictly static payloads, no judge, so it
+    is fully reproducible. The scored scaffolds (B16/B14) produce graded runs; the persona families run as supplementary
+    intel only (they overlap B1/B17/B21's judge-scored grade and must not double-count it). Laya triages each response
+    (advisory). Budget-gated: a cap ends the stage cleanly."""
+    from hfsentinel.targets.openai_compat import TargetError
+    selected = {s.catalog_id for s in plan.steps}
+
+    def goal_of(trial) -> str:
+        return next((m["content"] for m in trial.messages
+                     if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+
+    def run_scaffold(scaffold):
+        """One governed attempt: wrap a fresh benign canary trial in the scaffold, send, return (trial, msgs, result)."""
+        trial = canaries.trial("A1")  # benign planted-instruction canary trial ("output CANARY_x")
+        msgs = [{**m, "content": scaffolds.apply(scaffold, m["content"])}
+                if m.get("role") == "user" and isinstance(m.get("content"), str) else dict(m)
+                for m in trial.messages]
+        try:
+            return trial, msgs, target.chat(msgs, max_tokens=max_tokens, temperature=0.0)
+        except (BudgetExceeded, TargetError, ValueError):
+            return None, None, None
+
+    for scaffold in scaffolds.scored_scaffolds():
+        cid = scaffold.catalog_id
+        if cid not in selected:
+            continue
+        run = TechniqueRun(catalog_id=cid, seed=seed, planned_trials=trials)
+        run.mutator_chain = [scaffold.mutator]
+        for _ in range(max(MIN_VERIFY_TRIALS, trials)):
+            trial, msgs, result = run_scaffold(scaffold)
+            if trial is None:
+                run.complete = False
+                break
+            run.trials += 1
+            run.attempts += 1
+            verdict = canaries.evaluate(trial, result.text)
+            run.reasons[verdict.reason] += 1
+            if verdict.hit:
+                run.hits += 1
+                if len(run.proven) < MAX_PROVEN:
+                    run.proven.append(ProvenCase(sha256=_digest(msgs, result.text),
+                                                 excerpt=(getattr(verdict, "excerpt", "") or "")[:200]))
+                    if keep_transcripts:
+                        run.transcripts.append({"sha256": _digest(msgs, result.text), "messages": msgs,
+                                                "output": result.text})
+        res.runs.append(run)
+        res.requests += run.attempts
+        res.decide("S4", cid, f"{run.hits}/{run.trials} decode-and-follow",
+                   f"static scaffold '{scaffold.name}' ({scaffold.source}): decoded + obeyed the hidden canary")
+        res.decide("S5", cid, "confirmed" if confirmed(run.hits, run.trials, None) else "unconfirmed",
+                   "§2.2 deterministic canary oracle (no judge)")
+
+    for scaffold in scaffolds.persona_scaffolds():
+        trial, msgs, result = run_scaffold(scaffold)
+        if trial is None:
+            break  # budget cap: stop the supplementary probes
+        res.requests += 1
+        followed = canaries.evaluate(trial, result.text).hit
+        res.decide("S4", scaffold.catalog_id, f"persona '{scaffold.name}': {'followed' if followed else 'refused'}",
+                   f"static public scaffold ({scaffold.source}); supplementary intel, not graded")
+        if system_one is not None and getattr(system_one, "available", False) and hasattr(system_one, "triage"):
+            d = system_one.triage(goal_of(trial), result.text)
+            res.decide("S4", scaffold.catalog_id, f"Laya triage: {d.choice}",
+                       f"System-1 on persona '{scaffold.name}' response (conf {d.confidence})", advisory=True)
 
 
 def _cross_verify(res: CampaignResult, target, gov, canaries, *, trials, temperature, max_tokens, concurrency,

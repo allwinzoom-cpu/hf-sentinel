@@ -1,6 +1,6 @@
 """Encoding/transform battery (plan): bijection (B14), ArtPrompt (B15), FlipAttack (B16) mutators expose the mutator
-interface (composable via --compose); Best-of-N (B13) gives an ASR@k curve + power-law fit. Done-when: B13/B15 run
-Ready, B14/B16 run experimental until reproduced."""
+interface (composable via --compose); Best-of-N (B13) gives an ASR@k curve + power-law fit. B13/B15 run Ready;
+B14/B16 are now Ready too — scored statically by the deterministic decode-and-follow scaffold stage (no judge)."""
 import math
 
 import pytest
@@ -69,8 +69,9 @@ def test_power_law_fit_recovers_a_synthetic_exponent():
 def test_catalog_statuses_and_planner_dispositions():
     by_id = load_catalog().by_id()
     assert by_id["B13"].status == "ready" and by_id["B15"].status == "ready"
-    assert by_id["B14"].status == "candidate" and by_id["B16"].status == "candidate"
+    assert by_id["B14"].status == "ready" and by_id["B16"].status == "ready"
     controls = resolve_controls({"status": "all"}).controls
     steps = {s.catalog_id: s for s in build_plan(parse("openai+http://127.0.0.1:9/v1#m"), controls=controls).steps}
     assert steps["B13"].disposition == "run" and steps["B15"].disposition == "run"            # Ready
-    assert steps["B14"].disposition == "experimental" and steps["B16"].disposition == "experimental"
+    # B14/B16 are now Ready — scored statically by the deterministic decode-and-follow scaffold stage (no judge).
+    assert steps["B14"].disposition == "run" and steps["B16"].disposition == "run"

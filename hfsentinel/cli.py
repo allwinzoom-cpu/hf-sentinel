@@ -746,6 +746,37 @@ def report(findings: Annotated[Path, typer.Argument(help="Findings JSON written 
                    f"{_clean(f.technique, 60)}")
 
 
+@app.command()
+def job(model: Annotated[str, typer.Argument(help="Hub model id to serve + scan (org/model).", show_default=False)],
+        dataset: Annotated[str, typer.Option(help="Private HF dataset repo id (org/name) for the uploaded report.")],
+        image: Annotated[str, typer.Option(help="Pinned job image bundling vLLM + hfsentinel.")],
+        flavor: Annotated[str, typer.Option(help="HF Jobs hardware flavor.")] = "l4x1",
+        trials: Annotated[int, typer.Option(help="Trials per technique.")] = 10,
+        max_minutes: Annotated[int, typer.Option(help="Scan wall-clock cap (minutes).")] = 30,
+        dry_run: Annotated[bool, typer.Option("--dry-run", help="Print the job spec; submit nothing.")] = False) -> None:
+    """Launch an HF Job that serves `model` with vLLM, scans it on loopback, and uploads the report to `dataset` (617).
+    The job.write token is read from the environment/.env and handed to the job only as a secret (never logged)."""
+    from hfsentinel.targets.job_target import JobTargetError, build_job_spec, launch
+    try:
+        spec = build_job_spec(model, dataset, image=image, flavor=flavor, trials=trials, max_minutes=max_minutes)
+    except JobTargetError as e:
+        raise _fail(str(e), EXIT_INPUT) from None
+    if dry_run:
+        import json as _json
+        typer.echo(_json.dumps(spec.as_dict(), indent=2))
+        return
+    from hfsentinel.secrets import SecretNotFound, hf_token
+    try:
+        token = hf_token()
+    except SecretNotFound as e:
+        raise _fail(str(e), EXIT_INPUT) from None
+    try:
+        job_id = launch(spec, token)
+    except JobTargetError as e:
+        raise _fail(str(e), EXIT_UNSUPPORTED) from None
+    typer.echo(f"launched job {job_id}; report will upload to dataset {dataset}")
+
+
 def main() -> None:
     try:
         app()

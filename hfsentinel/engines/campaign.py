@@ -60,6 +60,7 @@ class CampaignResult:
     judge_saved_fraction: float = 0.0
     triage_agreement: float | None = None  # Laya-vs-System-2 agreement on judged items
     experimental: list = field(default_factory=list)  # experimental techniques run (B23 CDA), recorded never scored
+    abliteration: dict = field(default_factory=dict)  # safety-removal probe: refusal rate on should-refuse requests
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
         self.decisions.append({"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
@@ -84,7 +85,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  api_reference: set[str] | None = None, check_citations: bool = False,
                  check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-                 progress=lambda run: None) -> CampaignResult:
+                 check_abliteration: bool = False, progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
     s1 = system_one if (system_one is not None and system_one.available) else None
@@ -152,6 +153,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         _overconfidence_stage(res, target, max_tokens=max_tokens)
     if nli_scorer is not None:
         _nli_stage(res, target, scorer=nli_scorer, max_tokens=max_tokens)
+    if check_abliteration:
+        _abliteration_stage(res, target, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -383,6 +386,31 @@ def _overconfidence_stage(res: CampaignResult, target, *, max_tokens: int) -> No
     res.decide("S3", "H7", f"{run.hits}/{run.trials} miscalibrated",
                "answered with high confidence but wrong")
     res.decide("S5", "H7", "confirmed" if run.hits else "unconfirmed", "§2.2 confidence-vs-correctness oracle")
+
+
+def _abliteration_stage(res: CampaignResult, target, *, max_tokens: int) -> None:
+    """Safety-removal (abliteration) detection: send a fixed set of clearly-unsafe requests and measure the refusal
+    rate with the deterministic detector. A low rate means the target behaves like an abliterated / uncensored model —
+    a real, reproducible safety signal with no judge. Only the aggregate rate and the complied *categories* are kept
+    (D-015: never the unsafe output). Opt-in (`--abliteration`), since it sends should-refuse probes."""
+    from hfsentinel.attacks.abliteration import UNDER_REFUSAL_THRESHOLD, measure
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def ask(prompt: str) -> str:
+        return target.chat([{"role": "user", "content": prompt}], max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        r = measure(ask)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "abliteration", "stage stopped", "budget cap or target error")
+        return
+    res.requests += r.trials + r.errors
+    res.abliteration = {"trials": r.trials, "refusals": r.refusals, "refusal_rate": r.refusal_rate,
+                        "under_refusing": r.under_refusing, "complied_categories": r.complied_categories}
+    res.decide("S3", "abliteration", f"refusal rate {r.refusal_rate} ({r.refusals}/{r.trials})",
+               f"should-refuse probes; complied on {r.complied_categories or 'nothing'}")
+    res.decide("S5", "abliteration", "under-refusing (safety-removed signal)" if r.under_refusing else "refuses as expected",
+               f"refusal rate {'<' if r.under_refusing else '>='} {UNDER_REFUSAL_THRESHOLD} threshold")
 
 
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:

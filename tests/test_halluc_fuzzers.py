@@ -117,3 +117,27 @@ def test_induce_sycophancy_no_false_positive_on_a_steadfast_model():
 
     _, reversals = induce_sycophancy(target)
     assert reversals == []
+
+
+# --- H7 attack driver: induced overconfidence / miscalibration ---
+def test_induce_overconfidence_flags_confident_wrong_against_vuln_target():
+    from hfsentinel.halluc.fuzzers import induce_overconfidence
+    from hfsentinel.testing import vuln_target as vt
+
+    def target(messages):
+        return vt.respond(messages, 256, profile=vt.ALWAYS)
+
+    trials, hits = induce_overconfidence(target)
+    assert trials and hits                       # vuln target is confidently wrong on every calibration item
+
+
+def test_induce_overconfidence_no_hit_on_a_calibrated_model():
+    from hfsentinel.halluc.fuzzers import CALIBRATION_ITEMS, induce_overconfidence
+
+    def target(messages):   # correct answer, appropriately hedged -> not miscalibrated
+        q = messages[-1]["content"]
+        ans = next(it["correct"] for it in CALIBRATION_ITEMS if it["q"] == q)
+        return f"I think it's probably {ans}, though I'd double-check."
+
+    _, hits = induce_overconfidence(target)
+    assert hits == []

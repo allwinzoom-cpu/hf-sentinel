@@ -297,3 +297,20 @@ def test_multiturn_escalation_stage_records_a_clean_run():
         assert "broken" in res.multiturn and isinstance(res.multiturn["turns"], list)
     finally:
         srv.shutdown()
+
+
+def test_hallucination_stage_scores_h1_against_the_vuln_target():
+    """H1 scan stage: induce a package suggestion and verify it; a non-existent recommendation is a scored H1 finding."""
+    from hfsentinel.engines.campaign import CampaignResult, _hallucination_stage
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        res = CampaignResult()
+
+        def fake(eco, name):
+            return (not name.lower().startswith("quibble"), "fake-registry")
+
+        _hallucination_stage(res, _target(base), ecosystems={"pypi"}, max_tokens=256, verifier=fake)
+        h1 = [r for r in res.runs if r.catalog_id == "H1"]
+        assert h1 and h1[0].hits >= 1 and h1[0].proven       # recommended a non-existent package
+    finally:
+        srv.shutdown()

@@ -79,7 +79,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  concurrency: int, seed: int = 0, sink_host: str | None = None, system_one=None,
                  profile: TargetProfile | None = None, library: StrategyLibrary | None = None,
                  controls=None, keep_transcripts: bool = False, panel=None, judge_candidates=None,
-                 reference_set: dict[str, str] | None = None,
+                 reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
@@ -134,6 +134,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     if reference_set:
         _memorization_stage(res, target, gov, reference_set=reference_set, max_tokens=max_tokens, seed=seed,
                             keep_transcripts=keep_transcripts)
+    if halluc_ecosystems:
+        _hallucination_stage(res, target, ecosystems=halluc_ecosystems, max_tokens=max_tokens)
     _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
                     max_tokens=max_tokens, concurrency=concurrency, seed=seed,
                     mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
@@ -217,6 +219,31 @@ def _memorization_stage(res: CampaignResult, target, gov, *, reference_set: dict
     res.decide("S3", "C3", f"{run.hits}/{run.trials} memorized",
                "verbatim reproduction of a held reference (training-data extraction)")
     res.decide("S5", "C3", "confirmed" if run.hits else "unconfirmed", "§2.2 deterministic near-match oracle")
+
+
+def _hallucination_stage(res: CampaignResult, target, *, ecosystems: set[str], max_tokens: int, verifier=None) -> None:
+    """H1: adversarially induce a package suggestion and verify it against the ecosystem registry. A recommended
+    non-existent package (slopsquatting) is a confirmed hit. Produces a scored H1 run. Each prompt is a governed call."""
+    from hfsentinel.halluc.registry_checks import exists_online, induce
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def adapter(messages):
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        trials, hits = induce(adapter, ecosystems=ecosystems, verifier=verifier or exists_online)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S3", "H1", "package-hallucination stage stopped", "budget cap or target error")
+        return
+    run = TechniqueRun(catalog_id="H1", trials=trials, hits=len(hits), attempts=trials, planned_trials=trials)
+    for f in hits:
+        run.proven.append(ProvenCase(sha256=_digest([{"ecosystem": f.ecosystem, "name": f.name}], f.name),
+                                     excerpt=f"{f.ecosystem}:{f.name} not in registry ({f.evidence})"[:200]))
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S3", "H1", f"{run.hits}/{run.trials} hallucinated package(s)",
+               "recommended a package absent from its registry (slopsquatting)")
+    res.decide("S5", "H1", "confirmed" if run.hits else "unconfirmed", "§2.2 registry-existence oracle")
 
 
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:

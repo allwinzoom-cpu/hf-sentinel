@@ -61,7 +61,7 @@ All 52 catalog IDs accounted for · conditional: 7 · deferred: 11 · engine-wir
 | B23 | `built-by-us` | constrained-decoding-oracle | experimental | candidate; experimental, never scored (constrained decoding) |
 | C1 | `built-by-us` | extraction-and-memorization-oracles | oracle-only | native canary oracle built + tested; payload corpus via extractor, not in breadth sweep |
 | C2 | `built-by-us` | deterministic-canary-injection-oracles | wired |  |
-| C3 | `built-by-us` | extraction-and-memorization-oracles | oracle-only | native memorization oracle built + tested; needs a held reference set, not in breadth sweep |
+| C3 | `built-by-us` | extraction-and-memorization-oracles | oracle-only | native memorization oracle + cloze-extraction attack built + tested (attacks/memorization.py: extract); needs a held reference set; not yet in the breadth sweep |
 | C4 | `built-by-us` | extraction-and-memorization-oracles | conditional | conditional: target has cross-session memory |
 | D1 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool-enabled target or mock-tool env (oracle tested via fixtures) |
 | D2 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool-enabled target or mock-tool env (oracle tested via fixtures) |

@@ -188,7 +188,7 @@
     "B22": "native glitch oracle built + tested; attack generation not in breadth sweep",
     "B23": "candidate; experimental, never scored (constrained decoding)",
     "C1": "native canary oracle built + tested; payload corpus via extractor, not in breadth sweep",
-    "C3": "native memorization oracle built + tested; needs a held reference set, not in breadth sweep",
+    "C3": "native memorization oracle + cloze-extraction attack built + tested (attacks/memorization.py: extract); needs a held reference set; not yet in the breadth sweep",
     "C4": "conditional: target has cross-session memory",
     "D1": "runtime: tool-enabled target or mock-tool env (oracle tested via fixtures)",
     "D2": "runtime: tool-enabled target or mock-tool env (oracle tested via fixtures)",

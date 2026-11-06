@@ -13,6 +13,9 @@
 !test_plan.py
 !hf-llm-security-scanner-project-plan.md
 !action.yml
+!.github
+!.github/workflows
+!.github/workflows/upstream.yml
 # Never ship secrets or local state, even if nested.
 **/.env
 **/.env.*

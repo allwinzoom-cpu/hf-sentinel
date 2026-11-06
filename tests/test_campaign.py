@@ -271,3 +271,29 @@ def test_no_memorization_stage_without_a_reference_set():
         assert not any(r.catalog_id == "C3" for r in res.runs)    # C3 runs only when the operator supplies references
     finally:
         srv.shutdown()
+
+
+def test_multiturn_escalation_stage_breaks_a_defended_target():
+    """Multi-turn scan stage: against a defended target the escalation gradually breaks through on the encoded turn."""
+    srv, base = vuln_target.serve(defended=True, seed=30)
+    try:
+        plan, controls = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 5)
+        gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=4)
+        res = run_campaign(_target(base), gov, plan, trials=5, temperature=0.7, max_tokens=256, concurrency=4,
+                           seed=30, controls=controls)
+        assert res.multiturn.get("broken") is True and res.multiturn["move"] == "encoded"
+        assert res.multiturn_requests >= 4                         # softer turns tried before the encoded break
+    finally:
+        srv.shutdown()
+
+
+def test_multiturn_escalation_stage_records_a_clean_run():
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        plan, controls = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 5)
+        gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=4)
+        res = run_campaign(_target(base), gov, plan, trials=5, temperature=0.7, max_tokens=64, concurrency=4,
+                           seed=0, controls=controls)
+        assert "broken" in res.multiturn and isinstance(res.multiturn["turns"], list)
+    finally:
+        srv.shutdown()

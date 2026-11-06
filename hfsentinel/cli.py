@@ -508,6 +508,9 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "
                f"({pct}% fewer)")
+    if result.multiturn:
+        mt = result.multiturn
+        typer.echo(f"campaign  multi-turn escalation: {'BROKE at turn ' + str(mt['break_turn']) + ' via ' + mt['move'] if mt.get('broken') else 'target held (' + str(result.multiturn_requests) + ' turns)'}")
     recon = {"requests": profile.requests, "over_refusal_rate": profile.over_refusal_rate,
              "refusal_style": profile.refusal_style, "disagreements": list(profile.disagreements),
              "facts": {k: {"value": f.value, "reason": f.reason} for k, f in profile.facts.items()}}
@@ -515,6 +518,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                 "exhaustive_requests": result.exhaustive_requests, "requests_saved": saved,
                 "cross_verified": result.cross_verified, "verify_requests": result.verify_requests,
                 "escalations": result.escalations, "depth_requests": result.depth_requests,
+                "multiturn": result.multiturn, "multiturn_requests": result.multiturn_requests,
                 "baseline": result.baseline, "baseline_requests": result.baseline_requests,
                 "judge_calls_made": result.judge_calls_made, "judge_calls_saved": result.judge_calls_saved,
                 "triage_agreement": result.triage_agreement, "experimental": result.experimental,

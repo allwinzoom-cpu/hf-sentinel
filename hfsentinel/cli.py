@@ -82,6 +82,27 @@ def _fail(message: str, code: int) -> typer.Exit:
     return typer.Exit(code)
 
 
+_MAX_REFS_BYTES = 5_000_000
+
+
+def _load_memorization_refs(path):
+    """Load the operator's held reference texts for C3 (a local JSON object {id: text}); None when not supplied."""
+    if path is None:
+        return None
+    if not path.is_file() or path.stat().st_size > _MAX_REFS_BYTES:
+        raise _fail("--memorization-refs must be a JSON file no larger than 5 MB", EXIT_INPUT)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise _fail("--memorization-refs: unreadable or invalid JSON", EXIT_INPUT) from None
+    if not isinstance(data, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
+        raise _fail("--memorization-refs must be a JSON object of {id: text}", EXIT_INPUT)
+    refs = {k: v for k, v in data.items() if v.strip()}
+    if not refs:
+        raise _fail("--memorization-refs has no non-empty reference texts", EXIT_INPUT)
+    return refs
+
+
 def _optional_token() -> str | None:
     try:
         return hf_token()
@@ -302,6 +323,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          system_prompt: Annotated[Path | None, _opt("Deployer system prompt file.", JDG)] = None,
          tools: Annotated[Path | None, _opt("Mock-tool manifest (enables D*).", JDG)] = None,
          halluc_registries: Annotated[str | None, _opt("pypi,npm,crates,rubygems.", JDG)] = None,
+         memorization_refs: Annotated[Path | None, _opt("JSON {id: text} of held reference texts (enables C3).", JDG)] = None,
          sink_url: Annotated[str | None, _opt("Controlled https exfil sink.", JDG)] = None,
          with_firewall: Annotated[bool | None, _opt("Also run the guardrail differential.", JDG,
                                                     "--with-firewall/--without-firewall")] = None,
@@ -366,7 +388,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
         except ssrf.SsrfError as e:
             raise _fail(f"hosted SSRF guard refused the target/sink: {e}; no requests sent", EXIT_SCOPE) from None
     _execute(resolved, res, attestation, config, run_engines=engines, system_one_url=system_one,
-             system_one_multilingual_url=system_one_multilingual, use_judges=judges)
+             system_one_multilingual_url=system_one_multilingual, use_judges=judges,
+             reference_set=_load_memorization_refs(memorization_refs))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
@@ -440,7 +463,8 @@ def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, u
 
 def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, config: Path | None,
              *, run_engines: bool = False, system_one_url: str | None = None,
-             system_one_multilingual_url: str | None = None, use_judges: bool = False) -> None:
+             system_one_multilingual_url: str | None = None, use_judges: bool = False,
+             reference_set: dict[str, str] | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -478,7 +502,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
                           max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
                           seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
-                          library=library, controls=c, keep_transcripts=c.output.save_transcripts, progress=progress)
+                          library=library, controls=c, keep_transcripts=c.output.save_transcripts,
+                          reference_set=reference_set, progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "

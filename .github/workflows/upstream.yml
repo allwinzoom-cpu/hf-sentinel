@@ -1,0 +1,34 @@
+# Track upstream engine releases (plan 679): weekly, compare pinned engine versions against the latest PyPI releases;
+# on a bump, re-run the coverage matrix so coverage is re-checked before a maintainer updates the pins. Read-only
+# (no installs, no code execution from the tracked packages) — it only reads version metadata.
+name: upstream
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Check for upstream engine releases
+        id: drift
+        run: |
+          python3 -m pip install --quiet pyyaml
+          if python3 engines/upstream.py --check; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            code=$?
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            [ "$code" = "20" ] || exit "$code"   # 20 = drift (expected); any other code is a real failure
+          fi
+      - name: Re-run the coverage matrix on a bump
+        if: steps.drift.outputs.drift == 'true'
+        run: python3 engines/coverage_matrix.py --check
+      - name: Flag the drift
+        if: steps.drift.outputs.drift == 'true'
+        run: |
+          echo "::warning::An upstream engine has a newer release — bump engines/versions.json and re-verify coverage."
+          exit 1

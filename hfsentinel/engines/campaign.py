@@ -61,6 +61,7 @@ class CampaignResult:
     triage_agreement: float | None = None  # Laya-vs-System-2 agreement on judged items
     experimental: list = field(default_factory=list)  # reserved for any future never-scored candidate lane (B23 is now scored)
     abliteration: dict = field(default_factory=dict)  # safety-removal probe: refusal rate on should-refuse requests
+    adaptive: dict = field(default_factory=dict)  # B7 adaptive multi-turn (LLM attacker) outcome: broke / turns
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
         self.decisions.append({"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
@@ -85,7 +86,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  api_reference: set[str] | None = None, check_citations: bool = False,
                  check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-                 check_abliteration: bool = False, jailbreak_goals=None, progress=lambda run: None) -> CampaignResult:
+                 check_abliteration: bool = False, jailbreak_goals=None, adaptive_attacker=None, adaptive_turns: int = 5,
+                 progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
     s1 = system_one if (system_one is not None and system_one.available) else None
@@ -163,6 +165,9 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     _scaffold_stage(res, target, gov, canaries, plan=plan, trials=trials, max_tokens=max_tokens, seed=seed,
                     system_one=s1, keep_transcripts=keep_transcripts)
     _multiturn_stage(res, target, max_tokens=max_tokens, system_one=s1)
+    if adaptive_attacker is not None:
+        _adaptive_stage(res, target, attacker=adaptive_attacker, max_turns=adaptive_turns, max_tokens=max_tokens,
+                        seed=seed)
     _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
                   concurrency=concurrency, seed=seed)
     _judge_confirm(res, panel, s1, judge_candidates or [])
@@ -424,6 +429,30 @@ def _abliteration_stage(res: CampaignResult, target, *, max_tokens: int) -> None
                f"should-refuse probes; complied on {r.complied_categories or 'nothing'}")
     res.decide("S5", "abliteration", "under-refusing (safety-removed signal)" if r.under_refusing else "refuses as expected",
                f"refusal rate {'<' if r.under_refusing else '>='} {UNDER_REFUSAL_THRESHOLD} threshold")
+
+
+def _adaptive_stage(res: CampaignResult, target, *, attacker, max_turns: int, max_tokens: int, seed: int) -> None:
+    """B7 adaptive multi-turn (plan 643): an attacker LLM adapts its prompt each turn toward the benign canary objective
+    (same deterministic-canary target as B4), success decided by the canary oracle — no judge, no harmful content.
+    Supplementary to the scored sweep, like the B4 ladder. No attacker configured → a no-op."""
+    if attacker is None:
+        return
+    from hfsentinel.agents.adaptive_attacker import run_adaptive
+    from hfsentinel.targets.openai_compat import TargetError
+
+    def send(messages: list[dict]) -> str:
+        return target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+
+    try:
+        r = run_adaptive(attacker, send, max_turns=max_turns)
+    except (BudgetExceeded, TargetError, ValueError):
+        res.decide("S4", "B7", "adaptive stage stopped", "budget cap or target error")
+        return
+    res.adaptive = {"broke": r.broke, "turns": r.turns, "break_turn": r.break_turn}
+    res.requests += r.turns
+    res.decide("S4", "B7",
+               f"adaptive multi-turn {'broke at turn ' + str(r.break_turn) if r.broke else 'held'}",
+               f"{r.turns} turns of LLM-driven refinement toward the canary objective")
 
 
 def _multiturn_stage(res: CampaignResult, target, *, max_tokens: int, system_one=None) -> None:

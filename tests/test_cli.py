@@ -126,6 +126,16 @@ def test_job_path_is_unsupported_not_invalid(uri):
     assert res.exit_code == cli.EXIT_UNSUPPORTED and "D-004" in res.output
 
 
+def test_job_dry_run_submits_nothing(monkeypatch):
+    # LSCAN-012: the job dry-run renders the spec and must NEVER reach launch (no compute, no token read).
+    import hfsentinel.targets.job_target as jt
+    monkeypatch.setattr(jt, "launch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("launch called on dry-run")))
+    res = run("job", "Qwen/Qwen2.5-0.5B-Instruct", "--dataset", "org/ds", "--image", "org/img:sha", "--dry-run")
+    assert res.exit_code == cli.EXIT_OK
+    spec = json.loads(res.output)
+    assert spec["image"] == "org/img:sha" and "command" in spec
+
+
 @pytest.mark.parametrize("uri", ["hf-endpoint://x", "hf-endpoint://evil.example.com", "hf-job://x"])
 def test_malformed_planned_schemes_are_invalid(uri):
     assert run("resolve", uri).exit_code == cli.EXIT_INPUT

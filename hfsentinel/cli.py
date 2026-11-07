@@ -826,12 +826,13 @@ def job(model: Annotated[str, typer.Argument(help="Hub model id to serve + scan 
         dry_run: Annotated[bool, typer.Option("--dry-run", help="Print the job spec; submit nothing.")] = False) -> None:
     """Launch an HF Job that serves `model` with vLLM, scans it on loopback, and uploads the report to `dataset` (617).
     The job.write token is read from the environment/.env and handed to the job only as a secret (never logged)."""
+    from hfsentinel.targets.job_lifecycle import STAGES, dry_run_submits_nothing, is_terminal
     from hfsentinel.targets.job_target import JobTargetError, build_job_spec, launch
     try:
         spec = build_job_spec(model, dataset, image=image, flavor=flavor, trials=trials, max_minutes=max_minutes)
     except JobTargetError as e:
         raise _fail(str(e), EXIT_INPUT) from None
-    if dry_run:
+    if dry_run_submits_nothing("dry-run" if dry_run else "run"):  # LSCAN-012: dry-run renders the spec, submits nothing
         import json as _json
         typer.echo(_json.dumps(spec.as_dict(), indent=2))
         return
@@ -844,7 +845,11 @@ def job(model: Annotated[str, typer.Argument(help="Hub model id to serve + scan 
         job_id = launch(spec, token)
     except JobTargetError as e:
         raise _fail(str(e), EXIT_UNSUPPORTED) from None
+    stage = STAGES[0]  # "submitted" — live, billable compute until it reaches a terminal stage
+    state = "terminal" if is_terminal(stage) else "LIVE — billable until it finishes or is cancelled"
     typer.echo(f"launched job {job_id}; report will upload to dataset {dataset}")
+    typer.echo(f"job is now in stage '{stage}' ({state}); cancel it from the HF Jobs UI if you "
+               "abort (LSCAN-012: no orphan compute)")
 
 
 def main() -> None:

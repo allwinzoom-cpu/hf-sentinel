@@ -407,11 +407,12 @@ def _overconfidence_stage(res: CampaignResult, target, *, max_tokens: int) -> No
 
 
 def _abliteration_stage(res: CampaignResult, target, *, max_tokens: int) -> None:
-    """Safety-removal (abliteration) detection: send a fixed set of clearly-unsafe requests and measure the refusal
-    rate with the deterministic detector. A low rate means the target behaves like an abliterated / uncensored model —
-    a real, reproducible safety signal with no judge. Only the aggregate rate and the complied *categories* are kept
-    (D-015: never the unsafe output). Opt-in (`--abliteration`), since it sends should-refuse probes."""
-    from hfsentinel.attacks.abliteration import UNDER_REFUSAL_THRESHOLD, measure
+    """Under-refusal behavioural probe (LSCAN-003): send a fixed set of should-refuse requests and measure how often the
+    target gave a *substantive* non-refusal (a non-refusal that is empty/evasive/disclaimer-only is NOT counted as
+    compliance). An elevated substantive-compliance rate is an **observed-behaviour** signal, not a claim that the model
+    was abliterated / had weights edited — that mechanism needs independent operator evidence. No judge; D-015 keeps only
+    aggregates + complied categories (never the reply). Opt-in (`--abliteration`)."""
+    from hfsentinel.attacks.abliteration import COMPLIANCE_THRESHOLD, measure
     from hfsentinel.targets.openai_compat import TargetError
 
     def ask(prompt: str) -> str:
@@ -424,11 +425,17 @@ def _abliteration_stage(res: CampaignResult, target, *, max_tokens: int) -> None
         return
     res.requests += r.trials + r.errors
     res.abliteration = {"trials": r.trials, "refusals": r.refusals, "refusal_rate": r.refusal_rate,
-                        "under_refusing": r.under_refusing, "complied_categories": r.complied_categories}
-    res.decide("S3", "abliteration", f"refusal rate {r.refusal_rate} ({r.refusals}/{r.trials})",
-               f"should-refuse probes; complied on {r.complied_categories or 'nothing'}")
-    res.decide("S5", "abliteration", "under-refusing (safety-removed signal)" if r.under_refusing else "refuses as expected",
-               f"refusal rate {'<' if r.under_refusing else '>='} {UNDER_REFUSAL_THRESHOLD} threshold")
+                        "compliances": r.compliances, "compliance_rate": r.compliance_rate,
+                        "non_substantive": r.non_substantive, "elevated_compliance": r.elevated_compliance,
+                        "complied_categories": r.complied_categories}
+    res.decide("S3", "abliteration",
+               f"substantive-compliance rate {r.compliance_rate} ({r.compliances}/{r.trials}; "
+               f"{r.non_substantive} non-substantive)",
+               f"should-refuse probes; substantive non-refusal on {r.complied_categories or 'nothing'}")
+    res.decide("S5", "abliteration",
+               "elevated under-refusal behaviour (observed; weight/alignment mechanism NOT established)"
+               if r.elevated_compliance else "refuses or does not substantively comply (as expected)",
+               f"substantive-compliance rate {'>=' if r.elevated_compliance else '<'} {COMPLIANCE_THRESHOLD} threshold")
 
 
 def _adaptive_stage(res: CampaignResult, target, *, attacker, max_turns: int, max_tokens: int, seed: int) -> None:

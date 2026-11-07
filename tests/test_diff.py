@@ -58,7 +58,7 @@ def test_to_table_renders_side_by_side_with_verdict():
         srv_b.shutdown()
     assert table.startswith("# HF-Sentinel diff")
     assert "| Category | Target ASR | Base ASR | ΔASR |" in table
-    assert "Alignment removal likely" in table
+    assert "Materially more attackable (behavioural)" in table
 
 
 def test_identical_targets_show_no_alignment_removal():

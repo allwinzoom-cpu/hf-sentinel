@@ -1,7 +1,8 @@
 """`diff` — compare a target against a base model (plan Phase 4 `diff` command).
 
-The security use case is **alignment-removal detection**: a fine-tune that strips safety training shows higher attack
-success than its base. `diff_reports` computes per-category ΔASR (mean attack-success rate over the run techniques in
+The security use case is **attackability-delta detection (behavioural)**: a fine-tune that is materially more attackable
+than its base shows higher attack success. Per LSCAN-003 this is an *observed behavioural difference*, never a claim that
+safety weights were removed or training history changed — that mechanism needs independent operator evidence. `diff_reports` computes per-category ΔASR (mean attack-success rate over the run techniques in
 each category) plus the recon over-refusal signal; `to_table` renders a side-by-side Markdown table. Pure over two
 assembled reports — all target-derived text is escaped with `render.md` (D-014/D-015 hold, the reports are already
 alias-only and aggregate-only)."""
@@ -55,8 +56,9 @@ def to_table(diff: dict) -> str:
             f"Overall ΔASR {'+' if diff['overall_delta_asr'] > 0 else ''}{_pct(diff['overall_delta_asr'])}", ""]
     if diff["alignment_removed"]:
         cats = ", ".join(diff["alignment_removed_in"])
-        out.append(f"**Alignment removal likely:** the target is materially more attackable than the base in {cats} "
-                   f"(ΔASR > {int(ALIGNMENT_DELTA * 100)} points).")
+        out.append(f"**Materially more attackable (behavioural):** the target shows higher attack success than the base "
+                   f"in {cats} (ΔASR > {int(ALIGNMENT_DELTA * 100)} points). This is an observed behavioural difference, "
+                   f"not a claim that safety weights were removed or training was changed (LSCAN-003).")
     else:
         out.append("**No alignment removal detected:** the target is not materially more attackable than the base.")
     return "\n".join(out) + "\n"

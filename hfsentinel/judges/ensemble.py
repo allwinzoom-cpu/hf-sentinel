@@ -63,12 +63,19 @@ def production_policy() -> tuple[Policy, dict[str, str]]:
 class Panel:
     """System-2 judges for one scan: only the production policy's members, on the judge budget (D-017)."""
 
-    def __init__(self, token: str, governor, *, user_agent: str | None = None):
+    def __init__(self, token: str | None = None, governor=None, *, user_agent: str | None = None,
+                 cli: str | None = None):
+        """`cli` (e.g. "claude" / "codex") backs every judge with a local coding-assistant CLI instead of a metered
+        HF-router token (D-017 no-key path, host-only). Otherwise the judges call the router with `token`."""
         self.policy, models = production_policy()
         self.judges = {}
         for alias, model in models.items():
-            client = OpenAICompatTarget(HF_ROUTER, model, api_key=token, governor=governor, max_requests=10**6,
-                                        timeout=120, user_agent=user_agent or DEFAULT_USER_AGENT)
+            if cli:
+                from hfsentinel.judges.cli_judge import CliJudgeClient
+                client = CliJudgeClient(cli)
+            else:
+                client = OpenAICompatTarget(HF_ROUTER, model, api_key=token, governor=governor, max_requests=10**6,
+                                            timeout=120, user_agent=user_agent or DEFAULT_USER_AGENT)
             self.judges[alias] = GuardJudge(client) if alias == "guard" else RubricJudge(client, alias.split("/")[1])
 
     def decide(self, goal: str, response: str) -> Decision:

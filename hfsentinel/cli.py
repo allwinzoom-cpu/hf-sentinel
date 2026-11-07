@@ -323,6 +323,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          judges: Annotated[bool, typer.Option("--judges/--no-judges", help="Score engine-emitted judge candidates "
                                                "with the System-2 panel (needs a token; D-017 judge budget). Laya "
                                                "triage gates each judge call. Off by default.")] = False,
+         judge_cli: Annotated[str | None, _opt("Back the judge panel with a local CLI (claude|codex) instead of a "
+                                               "metered token — D-017 no-key path, host-only.", JDG)] = None,
          via: ViaOpt = Via.auto,
          profile: Annotated[str | None, _opt("quick|standard|deep|agentic|hallucination|diff|custom", SEL)] = None,
          categories: Annotated[str | None, _opt("Categories, e.g. A,B,H.", SEL)] = None,
@@ -445,10 +447,11 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              halluc_ecosystems=_parse_halluc_registries(halluc_registries),
              api_reference=_load_api_reference(api_reference), check_citations=bool(check_citations),
              check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration),
-             check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url))
+             check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli)
 
 
-def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False):
+def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False,
+                 judge_cli: str | None = None):
     """Run engine-owned techniques (catalog B) in their engine images via the sandbox; returns `(engine_results,
     judge_stats)`. Engine-emitted judge-scored candidate exchanges are routed through the triage-gated System-2 panel
     when `--judges` is set and a token is available (D-017 budget); otherwise they are recorded as deferred. Host-only
@@ -484,29 +487,40 @@ def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=
         else:
             typer.echo(f"  {outcome.engine:<14} {_clean(outcome.error, 80)}")
     judge_stats = _judge_engine_candidates(candidates, target, c, system_one=system_one, use_judges=use_judges,
-                                           out=results)
+                                           out=results, judge_cli=judge_cli)
     return (results or None), judge_stats
 
 
-def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, use_judges: bool, out: list):
+def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, use_judges: bool, out: list,
+                             judge_cli: str | None = None):
     """Route engine-emitted judge-scored candidate exchanges through the triage-gated System-2 panel (16.19). Appends
-    the synthetic judge EngineResults to `out` and returns the triage-savings stats, or records them as deferred."""
+    the synthetic judge EngineResults to `out` and returns the triage-savings stats, or records them as deferred.
+    `judge_cli` (claude|codex) backs the panel with a local CLI instead of a metered token (D-017 no-key path, host-only)."""
     if not candidates:
         return None
     if not use_judges:
         typer.echo(f"engines   {len(candidates)} judge-scored candidate(s) deferred (pass --judges to score them)")
         return None
-    token = _optional_token()
-    if not token:
-        typer.echo(f"engines   {len(candidates)} judge-scored candidate(s) deferred: no token for the judge panel")
-        return None
     from hfsentinel.engines import engine_bridge
     from hfsentinel.engines.governor import Governor, Ledger
     from hfsentinel.judges.ensemble import Panel
+    token = None
+    if judge_cli:
+        from hfsentinel.judges.cli_judge import available
+        if not available(judge_cli):
+            typer.echo(f"engines   {len(candidates)} candidate(s) deferred: judge CLI '{judge_cli}' not on PATH "
+                       "(use claude|codex)")
+            return None
+    else:
+        token = _optional_token()
+        if not token:
+            typer.echo(f"engines   {len(candidates)} judge-scored candidate(s) deferred: no token for the judge panel "
+                       "(or pass --judge-cli claude|codex)")
+            return None
     try:
         judge_gov = Governor(Ledger(max_requests=10**6, budget_usd=c.budget.judge_usd),
                              concurrency=c.target_io.concurrency)
-        panel = Panel(token, judge_gov, user_agent=c.target_io.user_agent)
+        panel = Panel(cli=judge_cli) if judge_cli else Panel(token, judge_gov, user_agent=c.target_io.user_agent)
         judge_results, stats = engine_bridge.judge_candidates(candidates, panel, system_one, target=target)
     except Exception as e:  # noqa: BLE001 — a judge-path failure degrades to deferred, never crashes the scan
         typer.echo(f"engines   judge panel unavailable ({type(e).__name__}); {len(candidates)} candidate(s) deferred")
@@ -523,7 +537,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
              api_reference: set[str] | None = None, check_citations: bool = False,
              check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-             check_abliteration: bool = False) -> None:
+             check_abliteration: bool = False, judge_cli: str | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -593,7 +607,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
         typer.echo(f"system-1  Laya triage saved {result.judge_calls_saved} of "
                    f"{result.judge_calls_made + result.judge_calls_saved} judge calls "
                    f"({result.judge_saved_fraction:.0%}) · agreement {result.triage_agreement}")
-    engine_results, engine_judge_stats = (_run_engines(t, c, plan, config, system_one=s1, use_judges=use_judges)
+    engine_results, engine_judge_stats = (_run_engines(t, c, plan, config, system_one=s1, use_judges=use_judges,
+                                                       judge_cli=judge_cli)
                                           if run_engines else (None, None))
     if engine_results is not None:
         campaign["engine_findings"] = sum(len(er.results) for er in engine_results)

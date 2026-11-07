@@ -15,7 +15,8 @@ from hfsentinel.engines.planner import Plan, PlanStep
 from hfsentinel.targets.resolve import parse
 
 PLAN = Plan(parse("openai+http://127.0.0.1:8000/v1#m"), 1,
-            (PlanStep("B16", "FlipAttack", "run", None), PlanStep("B14", "Bijection learning", "run", None)))
+            (PlanStep("B16", "FlipAttack", "run", None), PlanStep("B14", "Bijection learning", "run", None),
+             PlanStep("B6", "Decomposition (DrAttack-style)", "run", None)))
 
 
 class _R:
@@ -33,6 +34,8 @@ class Decoding:
             decoded = body[::-1]
         elif "substitution cipher" in hint:
             decoded = bijection_decode(body)
+        elif "ordered words" in hint:
+            decoded = " ".join(re.findall(r"\[\d+\]\s*(.*)", body))  # reassemble the decomposed fragments
         else:
             decoded = body or c  # persona scaffolds carry the instruction in plaintext
         m = _TOKEN.search(decoded)
@@ -60,8 +63,8 @@ def _gov():
 
 
 def test_library_scoping():
-    assert scaffolds.SCORED == ("B16", "B14")
-    assert {s.catalog_id for s in scaffolds.scored_scaffolds()} == {"B16", "B14"}
+    assert set(scaffolds.SCORED) == {"B16", "B14", "B6"}
+    assert {s.catalog_id for s in scaffolds.scored_scaffolds()} == {"B16", "B14", "B6"}
     # persona families are public, catalog-mapped, and never graded here
     personas = {s.name for s in scaffolds.persona_scaffolds()}
     assert {"DAN (Do Anything Now)", "AIM", "Developer Mode"} <= personas
@@ -80,8 +83,8 @@ def test_scored_scaffolds_confirm_on_a_decoding_target():
     res = CampaignResult()
     _scaffold_stage(res, Decoding(), _gov(), CanaryRun(1), plan=PLAN, trials=6, max_tokens=64, seed=1)
     runs = {r.catalog_id: r for r in res.runs}
-    assert set(runs) == {"B16", "B14"}
-    for cid in ("B16", "B14"):
+    assert set(runs) == {"B16", "B14", "B6"}
+    for cid in ("B16", "B14", "B6"):
         assert runs[cid].hits == runs[cid].trials >= 5  # decoded + obeyed every trial
     assert any(d["stage"] == "S5" and d["action"] == "confirmed" for d in res.decisions)
 
@@ -90,7 +93,7 @@ def test_refusing_target_is_a_clean_zero():
     res = CampaignResult()
     _scaffold_stage(res, Refusing(), _gov(), CanaryRun(2), plan=PLAN, trials=6, max_tokens=64, seed=2)
     runs = {r.catalog_id: r for r in res.runs}
-    assert runs["B16"].hits == 0 and runs["B14"].hits == 0  # agnostic: no decode, no (false) finding
+    assert runs["B16"].hits == 0 and runs["B14"].hits == 0 and runs["B6"].hits == 0  # agnostic: no decode, no finding
     assert all(d["action"] == "unconfirmed" for d in res.decisions if d["stage"] == "S5")
 
 

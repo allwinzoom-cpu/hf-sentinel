@@ -63,7 +63,7 @@ def test_resolve_prints_plan():
     assert int(m[6]) == 0  # nothing is n/a without recon: absence of a capability must be observed
     assert "recon     not run" in out
     for row, disposition in (("A1", "run"), ("B12", "unverified"), ("D1", "unverified"), ("C3", "blocked"),
-                             ("D7", "blocked"), ("B6", "experimental")):
+                             ("D7", "blocked"), ("B6", "run"), ("B8", "experimental")):
         assert re.search(rf"^\s*\d+ {row}\s+{re.escape(disposition)}\s", out, re.MULTILINE), row
     assert_no_upstream(out)
 

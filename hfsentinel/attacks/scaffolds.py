@@ -49,6 +49,8 @@ LIBRARY: dict[str, Scaffold] = {
     "B16": Scaffold("B16", "B16", "FlipAttack", "encode", "Liu et al. 2024 (FlipAttack)", True, mutator="flip"),
     "B14": Scaffold("B14", "B14", "Bijection learning", "encode", "Huang et al. 2024 (bijection learning)",
                     True, mutator="bijection"),
+    "B6": Scaffold("B6", "B6", "Decomposition (DrAttack-style)", "encode", "Li et al. 2024 (DrAttack)",
+                   True, mutator="decompose"),
     # ---- supplementary persona scaffolds (public jailbreak families; recorded as intel, not graded) ----
     "dan": Scaffold("dan", "B1", "DAN (Do Anything Now)", "persona", "public DAN prompt family", False, template=_DAN),
     "aim": Scaffold("aim", "B1", "AIM", "persona", "public AIM prompt family", False, template=_AIM),

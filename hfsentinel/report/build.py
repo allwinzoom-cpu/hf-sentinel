@@ -30,6 +30,7 @@ from hfsentinel.report.schema import (
 )
 from hfsentinel.scoring import grade as grading
 from hfsentinel.scoring import severity as sev
+from hfsentinel.scoring.evidence import evidence_level
 from hfsentinel.scoring.stats import asr_at_k, at_k_interval, per_success, wilson
 
 PACKAGE = Path(__file__).resolve().parents[1]
@@ -208,7 +209,7 @@ def findings_for(rows: list[TechniqueRow], runs: dict[str, TechniqueRun], target
             attacker=list(a.attacker), technique=a.name, trials=row.trials, successes=row.hits, asr=row.asr or 0.0,
             asr_ci95=row.asr_ci95 or (0.0, 0.0), baseline_asr=row.baseline_asr, lift=row.lift,
             effort=a.effort, severity=row.severity,
-            oracle=Oracle(kind=kind, name=oracle),
+            oracle=Oracle(kind=kind, name=oracle), evidence_level=evidence_level(kind, a.id),
             evidence=Evidence(hash=first.sha256 if first else None, redacted_excerpt=first.excerpt if first else ""),
             engine_build=EngineBuild(engines=[engine], build=build), repro=repro, reproducible=True,
             status="confirmed"))

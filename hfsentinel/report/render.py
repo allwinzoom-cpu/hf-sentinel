@@ -171,7 +171,8 @@ def to_markdown(report: Report) -> str:
                 f"- ASR {_pct(f.asr)} ({f.successes}/{f.trials}), 95% CI {_ci(f.asr_ci95)} · effort {f.effort}",
                 f"- baseline (un-attacked) {_pct(f.baseline_asr)} · lift {_pct(f.lift)} (graded on lift)",
                 f"- OWASP {md(', '.join(f.owasp))} · MITRE ATLAS {md(', '.join(f.atlas))}",
-                f"- Oracle: {md(f.oracle.kind)} / {md(f.oracle.name)} · evidence sha256 {md(f.evidence.hash or '–')}"]
+                f"- Oracle: {md(f.oracle.kind)} / {md(f.oracle.name)} · evidence sha256 {md(f.evidence.hash or '–')}",
+                f"- Evidence established: {md(f.evidence_level)} (what this oracle actually demonstrated — LSCAN-002)"]
         if f.evidence.redacted_excerpt:
             out += ["- Redacted excerpt (target output, shown inert):", "", md_fence(f.evidence.redacted_excerpt)]
         out.append("")

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from hfsentinel.targets import hub
+from hfsentinel.targets.endpoint_contracts import endpoint_contract
 from hfsentinel.targets.gradio_space import GradioSpaceTarget
 from hfsentinel.targets.openai_compat import DEFAULT_USER_AGENT, HF_ROUTER, OpenAICompatTarget, _check_base_url
 
@@ -31,9 +32,10 @@ SPACE_URI = re.compile(rf"^hf-space://(?P<space>{_REPO})(?:@(?P<api>[A-Za-z0-9_]
                        re.ASCII)
 JOB_URI = re.compile(rf"^hf-job://(?P<model>{_REPO})(?:@(?P<flavor>[a-z0-9][a-z0-9-]{{0,31}}))?$", re.ASCII)
 OPENAI_URI = re.compile(rf"^openai\+(?P<base>https?://[^#\s]{{1,400}})#(?P<model>{_MODEL})$", re.ASCII)
-ENDPOINT_DEFAULT_MODEL = "tgi"  # TGI serves whatever model the endpoint runs under any name; vLLM needs `#model`
 JOB_DEFERRED = "hf-job targets are not supported in this build (HF Jobs deferred, D-004)"
 VIA = ("auto", "direct")
+# The dedicated-endpoint model identity is resolved from the endpoint contract (LSCAN-010), the single source of truth —
+# `endpoint_contracts.ENDPOINT_DEFAULT_MODEL` is no longer duplicated here.
 
 
 class TargetURIError(ValueError):
@@ -68,7 +70,9 @@ def parse(uri: str) -> ResolvedTarget:
     if m := PROVIDER_URI.match(uri):
         return ResolvedTarget(uri, "hf-provider", m["model"], HF_ROUTER, provider=m["provider"])
     if m := ENDPOINT_URI.match(uri):
-        return ResolvedTarget(uri, "hf-endpoint", m["model"] or ENDPOINT_DEFAULT_MODEL, f"https://{m['host']}/v1")
+        # LSCAN-010: the model identity comes from the endpoint contract (TGI serves any model under the default name).
+        model = m["model"] or endpoint_contract("chat")["model"]
+        return ResolvedTarget(uri, "hf-endpoint", model, f"https://{m['host']}/v1")
     if m := SPACE_URI.match(uri):
         return ResolvedTarget(uri, "hf-space", m["model"], space=m["space"], api=m["api"])
     if m := JOB_URI.match(uri):

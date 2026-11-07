@@ -195,7 +195,9 @@ def plan_for(prof, flags=None):
 
 def test_no_tools_no_structured_output_means_na_with_zero_requests():
     steps = plan_for(profile())
-    for cid in ("D1", "D2", "D3", "D4", "D5", "E4", "B23"):
+    # LSCAN-004: a plain-chat target (no tools, no cross-session memory, no structured output) shows every
+    # privileged-surface technique as N/A — the declared attacker controls only user text.
+    for cid in ("D1", "D2", "D3", "D4", "D5", "E4", "B23", "C4"):
         assert steps[cid].disposition == "n/a" and steps[cid].requests == 0, cid
     assert steps["D7"].disposition == "n/a" and steps["D7"].requests == 0  # nothing supplied either
     assert steps["C3"].disposition == "blocked" and steps["H2"].disposition == "blocked"  # operator/oracle gaps

@@ -1,0 +1,11 @@
+{
+  "schema": "lscan-007 local OpenAI-compatible runtime conformance recipes. The scanner CONNECTS to an already-running local server; it never downloads or loads weights. Each recipe records the OpenAI-compatible base path, auth mode, model-identifier handling and loopback support so mocked protocol controls establish exactly which checks run.",
+  "runtimes": {
+    "ollama": {"openai_base": "http://127.0.0.1:11434/v1", "auth": "none", "model": "required-alias", "loopback": ["ipv4", "ipv6"], "loads_weights_in_scanner": false, "source": "https://docs.ollama.com/api/openai-compatibility"},
+    "llama.cpp": {"openai_base": "http://127.0.0.1:8080/v1", "auth": "optional-bearer", "model": "server-default", "loopback": ["ipv4", "ipv6"], "loads_weights_in_scanner": false, "source": "https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md"},
+    "lmstudio": {"openai_base": "http://127.0.0.1:1234/v1", "auth": "none", "model": "required-alias", "loopback": ["ipv4"], "loads_weights_in_scanner": false, "source": "https://lmstudio.ai/docs/developer/openai-compat"},
+    "vllm": {"openai_base": "http://127.0.0.1:8000/v1", "auth": "optional-bearer", "model": "required-alias", "loopback": ["ipv4", "ipv6"], "loads_weights_in_scanner": false, "source": "https://docs.vllm.ai/en/stable/serving/openai_compatible_server/"},
+    "tgi": {"openai_base": "http://127.0.0.1:8080/v1", "auth": "optional-bearer", "model": "server-default", "loopback": ["ipv4", "ipv6"], "loads_weights_in_scanner": false, "source": "https://huggingface.co/docs/text-generation-inference"},
+    "sglang": {"openai_base": "http://127.0.0.1:30000/v1", "auth": "optional-bearer", "model": "required-alias", "loopback": ["ipv4", "ipv6"], "loads_weights_in_scanner": false, "source": "https://docs.sglang.io/docs/basic_usage/openai_api"}
+  }
+}

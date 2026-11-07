@@ -161,6 +161,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-006 · Framework-version pins embedded in the live report — `hfsentinel/report/frameworks.py` (authoritative pins: OWASP LLM 2025, OWASP Agentic 2025, MITRE ATLAS 5.6.0), `Report.frameworks` field in `report/build.py`, drift-guard test ties report-layer pins to `engines/framework_versions.json`; coverage reported as **partial-dynamic**, never 'Top 10 complete'. 18/18 focused pytest green.
 
+- LSCAN-002/006 · SARIF now carries honesty metadata — each result exposes `evidence_level` (what the oracle actually demonstrated), and the run block carries the pinned `frameworks` + `coverage_claim` (partial-dynamic). `tests/test_report.py::test_sarif_meets_github_upload_rules` extended; green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

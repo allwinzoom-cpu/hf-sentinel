@@ -68,8 +68,9 @@ def test_unsupported_target_is_recorded_na():
     assert not res.reproduced and res.verdict.startswith("n/a")
 
 
-def test_campaign_runs_b23_experimental_and_records_the_verdict():
-    """A scan on a structured-output target runs B23 experimentally and records its reproduce verdict (never scored)."""
+def test_campaign_scores_b23_on_a_structured_output_target():
+    """B23 is now a SCORED conditional: a scan on a structured-output target runs the deterministic CDA oracle and
+    produces a scored B23 run (hits/trials) + an S3/S5 decision — no judge, no longer an experimental-only lane."""
     from hfsentinel.controls import resolve_controls
     from hfsentinel.engines.campaign import run_campaign
     from hfsentinel.engines.governor import Governor, Ledger
@@ -86,8 +87,10 @@ def test_campaign_runs_b23_experimental_and_records_the_verdict():
         gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=2)
         res = run_campaign(_target(base), gov, plan, trials=8, temperature=0.7, max_tokens=64, concurrency=2,
                            seed=1, profile=profile)
-        b23 = next(e for e in res.experimental if e["id"] == "B23")
-        assert b23["reproduced"] and "reproduced" in b23["verdict"]  # recorded, experimental
-        assert any(d["stage"] == "S4" and d["catalog_id"] == "B23" for d in res.decisions)
+        b23 = next(r for r in res.runs if r.catalog_id == "B23")
+        assert b23.hits >= 1 and b23.trials >= 1                      # scored run, not an experimental record
+        assert any(d["stage"] == "S3" and d["catalog_id"] == "B23" for d in res.decisions)
+        assert any(d["stage"] == "S5" and d["catalog_id"] == "B23" and d["action"] == "confirmed"
+                   for d in res.decisions)                            # vuln target reproduces → confirmed
     finally:
         srv.shutdown()

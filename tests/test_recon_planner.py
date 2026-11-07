@@ -237,7 +237,8 @@ def test_keyword_filter_favours_encoding_and_limits_mutators():
 def test_observed_capabilities_unlock_and_boost():
     steps = plan_for(profile(special_token_parsing=True, reasoning_trace=True, prefill=True, structured_output=True))
     assert steps["A6"].disposition == "run" and "special tokens parsed" in steps["A6"].rationale
-    assert steps["B10"].disposition == "experimental" and steps["B23"].disposition == "experimental"
+    # B10 stays an experimental candidate; B23 is now a SCORED conditional → run once structured output is observed.
+    assert steps["B10"].disposition == "experimental" and steps["B23"].disposition == "run"
     assert steps["B12"].disposition == "run"
 
 
@@ -255,9 +256,9 @@ def test_cli_recon_on_vuln_target_and_plan():
     out = res.output
     assert res.exit_code == cli.EXIT_OK, out
     assert re.search(r"tool_calling\s+no\s+no_tool_call", out) and "recon     profile applied" in out
-    # structured_output is detected on the vuln target, so B23's precondition is met → experimental (candidate)
+    # structured_output is detected on the vuln target, so B23's precondition is met → run (now a scored conditional)
     assert re.search(r"^\s*\d+ D1\s+n/a\s", out, re.MULTILINE)
-    assert re.search(r"^\s*\d+ B23\s+experimental\s", out, re.MULTILINE)
+    assert re.search(r"^\s*\d+ B23\s+run\s", out, re.MULTILINE)
 
 
 def test_cli_recon_refuses_unapproved_targets(monkeypatch):

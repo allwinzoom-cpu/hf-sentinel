@@ -30,8 +30,8 @@ attacks:
      oracle: "conversation-level jailbreak judge"}
   - {id: B5, category: B, name: Many-shot, owasp: [LLM01], atlas: [AML.T0054], attacker: [T1], effort: E, status: ready,
      oracle: "jailbreak judge"}
-  - {id: B6, category: B, name: Decomposition (DrAttack-style), owasp: [LLM01], atlas: [AML.T0054], attacker: [T1], effort: M, status: candidate,
-     oracle: "jailbreak judge on recombined final output"}
+  - {id: B6, category: B, name: Decomposition (DrAttack-style), owasp: [LLM01], atlas: [AML.T0054], attacker: [T1], effort: M, status: ready,
+     oracle: "static reassemble-and-follow: fragmented benign canary recovered in output (deterministic canary oracle)"}
   - {id: B7, category: B, name: Iterative attacker-LLM refinement (PAIR/TAP), owasp: [LLM01], atlas: [AML.T0054, AML.T0065], attacker: [T1], effort: M, status: ready,
      oracle: "jailbreak judge"}
   - {id: B8, category: B, name: Genetic / evolutionary search (AutoDAN-style), owasp: [LLM01], atlas: [AML.T0054, AML.T0065], attacker: [T1], effort: M, status: candidate,

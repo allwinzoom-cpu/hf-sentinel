@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from hfsentinel import __version__
 from hfsentinel.attacks.catalog import Catalog, load_catalog
 from hfsentinel.engines.sweep import TechniqueRun
+from hfsentinel.report.frameworks import report_block as _framework_block
 from hfsentinel.report.normalize import CATEGORY_NAMES
 from hfsentinel.report.schema import (
     SCHEMA_VERSION,
@@ -116,6 +117,7 @@ class Report(_Strict):
     grade: dict
     ledger: dict
     limitations: list[str]
+    frameworks: dict = Field(default_factory=_framework_block)  # LSCAN-006: pinned framework versions + partial-coverage
     report_sha256: str = ""
 
 

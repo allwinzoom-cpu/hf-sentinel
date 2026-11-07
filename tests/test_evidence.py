@@ -16,9 +16,16 @@ def test_judge_findings_are_policy_violations():
     assert not is_surrogate_or_weaker("policy-violation")
 
 
-def test_disclosure_canaries_are_policy_violations():
-    assert evidence_level("deterministic", "C1") == "policy-violation"
-    assert evidence_level("deterministic", "C2") == "policy-violation"
+def test_system_prompt_extraction_is_a_surrogate_not_provider_disclosure():
+    # LSCAN-004: C1 recovers the HARNESS-planted system prompt, so it is a surrogate for system-prompt extraction,
+    # never a claim to have extracted the provider's actual hidden prompt.
+    assert evidence_level("deterministic", "C1") == "instruction-following-surrogate"
+    assert is_surrogate_or_weaker(evidence_level("deterministic", "C1"))
+
+
+def test_real_disclosure_canaries_are_policy_violations():
+    for cid in ("C2", "C3", "C4"):  # real context-secret / training-data / cross-session leaks
+        assert evidence_level("deterministic", cid) == "policy-violation"
 
 
 def test_call_log_is_attempted_action():

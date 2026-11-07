@@ -43,12 +43,12 @@ PRECONDITIONS: dict[str, Requirement] = {
     "multi-turn": (((F, "multi_turn_memory"),),),
     "source-existence oracle": (((O, "source_oracle"),),),
     "ground-truth + calibration readout": (((O, "calibration_oracle"),),),
+    "structured-output API honoured": (((F, "structured_output"),),),
 }
 # Technique requirements the frozen v0 catalog does not encode as preconditions (ANDed with any precondition).
 TECHNIQUE_REQUIREMENTS: dict[str, Requirement] = {
     "B10": (((F, "reasoning_trace"),),),
     "B12": (((F, "prefill"),),),
-    "B23": (((F, "structured_output"),),),
 }
 EFFORT_COST = {"E": 1, "M": 4}  # expected requests per trial: single-shot vs multi-step
 DEFAULT_PRIOR_ASR = 0.5  # until the strategy library (Phase 3) supplies per-technique priors

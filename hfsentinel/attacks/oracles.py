@@ -93,7 +93,7 @@ ORACLES: dict[str, Oracle] = {
     "B22": Oracle("deterministic", "hfsentinel.attacks.glitch:is_anomalous", "control+probe",
                   "behaviour-change anomaly vs. control prompt"),
     "B23": Oracle("deterministic", "hfsentinel.attacks.cda:run_cda", "structured-output",
-                  "constrained-decoding reproduction; N/A without structured output", experimental=True),
+                  "constrained-decoding reproduction (enum-pinned canary via response_format); N/A without structured output"),
 
     # ---- Category C — Information Disclosure ----
     "C1": Oracle("deterministic", _CANARY, "response", "planted system-prompt canary / fuzzy match"),

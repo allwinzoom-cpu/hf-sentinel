@@ -59,7 +59,7 @@ class CampaignResult:
     judge_calls_saved: int = 0     # confident refusals skipped by Laya triage (the savings)
     judge_saved_fraction: float = 0.0
     triage_agreement: float | None = None  # Laya-vs-System-2 agreement on judged items
-    experimental: list = field(default_factory=list)  # experimental techniques run (B23 CDA), recorded never scored
+    experimental: list = field(default_factory=list)  # reserved for any future never-scored candidate lane (B23 is now scored)
     abliteration: dict = field(default_factory=dict)  # safety-removal probe: refusal rate on should-refuse requests
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
@@ -102,6 +102,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
             res.decide("S2", step.catalog_id, "run", step.rationale)
         elif step.catalog_id in SCAFFOLD_SCORED:
             res.decide("S2", step.catalog_id, "run", "deterministic scaffold stage (decode-and-follow canary oracle)")
+        elif step.catalog_id == "B23":
+            res.decide("S2", "B23", "run", "deterministic constrained-decoding stage (structured-output canary oracle)")
         elif step.disposition == "run":
             res.decide("S2", step.catalog_id, "defer", ENGINE_SERVICE)
     if s1 is not None and runnable:
@@ -164,29 +166,37 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
                   concurrency=concurrency, seed=seed)
     _judge_confirm(res, panel, s1, judge_candidates or [])
-    _experimental(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
+    _cda_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
     if library is not None:
         _learn(res, library, profile)
     return res
 
 
-def _experimental(res: CampaignResult, target, plan: Plan, *, profile, seed: int, max_tokens: int) -> None:
-    """Run native experimental techniques (plan: candidate status → experimental, never scored). B23 constrained
-    decoding runs only when recon saw structured-output support; its reproduce verdict is recorded, not graded (16.7)."""
+def _cda_stage(res: CampaignResult, target, plan: Plan, *, profile, seed: int, max_tokens: int) -> None:
+    """B23 constrained-decoding — now a SCORED conditional (plan 16.7). When recon saw structured-output support and the
+    planner marked B23 runnable, run the deterministic CDA oracle: a planted enum canary returned via `response_format`
+    despite a plaintext refusal is a scored hit (no judge). N/A when the target does not honour structured output."""
+    step = next((s for s in plan.steps if s.catalog_id == "B23"), None)
+    if step is None or step.disposition != "run":
+        return
     structured = profile is not None and getattr(profile, "has", lambda _n: None)("structured_output") is True
-    for step in plan.steps:
-        if step.disposition != "experimental" or step.catalog_id != "B23":
-            continue
-        if not structured:
-            res.decide("S4", "B23", "n/a", "target does not honour structured output", advisory=True)
-            continue
-        from hfsentinel.attacks.cda import run_cda
-        r = run_cda(target, seed=seed, max_tokens=max_tokens)
-        res.requests += r.trials
-        res.experimental.append({"id": "B23", "trials": r.trials, "hits": r.hits, "reproduced": r.reproduced,
-                                 "verdict": r.verdict})
-        res.decide("S4", "B23", f"experimental: {'reproduced' if r.reproduced else 'not reproduced'}",
-                   r.verdict, advisory=True)
+    if not structured:
+        res.decide("S3", "B23", "n/a", "target does not honour structured output", advisory=True)
+        return
+    from hfsentinel.attacks.cda import run_cda
+    r = run_cda(target, seed=seed, max_tokens=max_tokens)
+    if not r.supported:
+        res.decide("S3", "B23", "n/a", "response_format rejected at runtime", advisory=True)
+        return
+    run = TechniqueRun(catalog_id="B23", trials=r.trials, hits=r.hits, attempts=r.trials, planned_trials=r.trials)
+    if r.hits and r.excerpt:
+        run.proven.append(ProvenCase(sha256=_digest([{"cda": "response_format"}], r.excerpt), excerpt=r.excerpt[:200]))
+    res.runs.append(run)
+    res.requests += r.trials
+    res.decide("S3", "B23", f"{r.hits}/{r.trials} structured-output bypasses",
+               "constrained-decoding: enum-pinned canary returned despite a plaintext refusal")
+    res.decide("S5", "B23", "confirmed" if r.reproduced else "unconfirmed",
+               "§2.2 deterministic constrained-output oracle (no judge)")
 
 
 def _judge_confirm(res: CampaignResult, panel, s1, candidates: list, *, policy=None) -> None:

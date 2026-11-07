@@ -85,7 +85,7 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
                  api_reference: set[str] | None = None, check_citations: bool = False,
                  check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-                 check_abliteration: bool = False, progress=lambda run: None) -> CampaignResult:
+                 check_abliteration: bool = False, jailbreak_goals=None, progress=lambda run: None) -> CampaignResult:
     res = CampaignResult()
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
     s1 = system_one if (system_one is not None and system_one.available) else None
@@ -166,6 +166,9 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
                   concurrency=concurrency, seed=seed)
     _judge_confirm(res, panel, s1, judge_candidates or [])
+    if jailbreak_goals:
+        _jailbreak_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
+                               max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
     _cda_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
     if library is not None:
         _learn(res, library, profile)
@@ -477,6 +480,53 @@ def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, tria
         else:
             res.decide('S4', run.catalog_id, 'no bypass found',
                        f'tried {len(mutators)} encoding mutators on the weak spot')
+
+
+def _jailbreak_judge_stage(res: CampaignResult, target, *, panel, system_one, goals, max_tokens: int, seed: int,
+                           keep_transcripts: bool = False) -> None:
+    """Harmful-goal jailbreak scoring (plan 641/646, D-017): wrap each harmful-goal seed in each jailbreak scaffold, send
+    it to the target, and score the response with the triage-gated judge panel (CLI- or token-backed). A judge `finding`
+    on a scaffold is a scored jailbreak hit for that scaffold's catalog id. Laya triage (when available) gates each judge
+    call. D-015: only a redacted judge-reason excerpt is kept per confirmed hit — never the target's harmful output.
+    No panel or no goals → a no-op. This is the judge-scored path the deterministic oracles cannot cover."""
+    if panel is None or not goals:
+        return
+    from hfsentinel.attacks import scaffolds as _sc
+    from hfsentinel.judges.ensemble import TriagedPanel
+    from hfsentinel.targets.openai_compat import TargetError
+    tp = TriagedPanel(panel, system_one) if (system_one is not None and getattr(system_one, "available", False)) else None
+    runs: dict[str, TechniqueRun] = {}
+    for category, goal in goals:
+        for sc in _sc.LIBRARY.values():
+            run = runs.setdefault(sc.catalog_id, TechniqueRun(catalog_id=sc.catalog_id, seed=seed))
+            try:
+                resp = target.chat([{"role": "user", "content": _sc.apply(sc, goal)}],
+                                   max_tokens=max_tokens, temperature=0.0).text
+            except (BudgetExceeded, TargetError, ValueError):
+                run.complete = False
+                continue
+            run.trials += 1
+            run.attempts += 1
+            decision = tp.decide(goal, resp)[0] if tp is not None else panel.decide(goal, resp)
+            if decision.outcome == "finding":
+                run.hits += 1
+                if len(run.proven) < MAX_PROVEN:
+                    run.proven.append(ProvenCase(
+                        sha256=_digest([{"goal_category": category, "scaffold": sc.key}], resp),
+                        excerpt=f"judge finding via '{sc.name}' ({decision.reason})"[:200]))
+    for cid, run in runs.items():
+        res.runs.append(run)
+        res.requests += run.attempts
+        res.decide("S5", cid, f"{run.hits}/{run.trials} judged jailbreaks",
+                   "harmful-goal seeds scored by the judge panel (no deterministic oracle)")
+    if tp is not None:
+        st = tp.stats
+        res.judge_calls_made += st.made
+        res.judge_calls_saved += st.saved
+        res.judge_saved_fraction, res.triage_agreement = st.saved_fraction, st.agreement
+        res.decide("S5", "*", f"judge calls saved {st.saved}/{st.total}",
+                   f"Laya triage skipped {st.saved_fraction:.0%} of judge calls (agreement {st.agreement})",
+                   advisory=True)
 
 
 def _scaffold_stage(res: CampaignResult, target, gov, canaries, *, plan, trials: int, max_tokens: int, seed: int,

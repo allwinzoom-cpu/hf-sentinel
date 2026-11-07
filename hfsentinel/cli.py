@@ -325,6 +325,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
                                                "triage gates each judge call. Off by default.")] = False,
          judge_cli: Annotated[str | None, _opt("Back the judge panel with a local CLI (claude|codex) instead of a "
                                                "metered token — D-017 no-key path, host-only.", JDG)] = None,
+         jailbreak: Annotated[bool, _opt("Judge-scored jailbreak loop: wrap harmful-goal seeds in jailbreak scaffolds, "
+                                         "send to the target, grade responses with the judge panel (needs --judge-cli "
+                                         "or a token).", JDG, "--jailbreak/--no-jailbreak")] = False,
          via: ViaOpt = Via.auto,
          profile: Annotated[str | None, _opt("quick|standard|deep|agentic|hallucination|diff|custom", SEL)] = None,
          categories: Annotated[str | None, _opt("Categories, e.g. A,B,H.", SEL)] = None,
@@ -447,7 +450,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              halluc_ecosystems=_parse_halluc_registries(halluc_registries),
              api_reference=_load_api_reference(api_reference), check_citations=bool(check_citations),
              check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration),
-             check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli)
+             check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli,
+             jailbreak=bool(jailbreak))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False,
@@ -489,6 +493,23 @@ def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=
     judge_stats = _judge_engine_candidates(candidates, target, c, system_one=system_one, use_judges=use_judges,
                                            out=results, judge_cli=judge_cli)
     return (results or None), judge_stats
+
+
+def _build_judge_panel(c, judge_cli: str | None):
+    """Build a System-2 judge Panel: CLI-backed (claude|codex, no metered key — D-017 no-key path) when `judge_cli` is
+    set and available, else token-backed on the D-017 judge budget. Returns None when no backend is available."""
+    from hfsentinel.engines.governor import Governor, Ledger
+    from hfsentinel.judges.ensemble import Panel
+    if judge_cli:
+        from hfsentinel.judges.cli_judge import available
+        if not available(judge_cli):
+            return None
+        return Panel(cli=judge_cli)
+    token = _optional_token()
+    if not token:
+        return None
+    gov = Governor(Ledger(max_requests=10**6, budget_usd=c.budget.judge_usd), concurrency=c.target_io.concurrency)
+    return Panel(token, gov, user_agent=c.target_io.user_agent)
 
 
 def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, use_judges: bool, out: list,
@@ -537,7 +558,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
              api_reference: set[str] | None = None, check_citations: bool = False,
              check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-             check_abliteration: bool = False, judge_cli: str | None = None) -> None:
+             check_abliteration: bool = False, judge_cli: str | None = None, jailbreak: bool = False) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -572,6 +593,16 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                    f"{'-' if run.temp0_hit is None else ('hit' if run.temp0_hit else 'no')} · "
                    f"{run.attempts} req · {run.errors} errors{tail}")
 
+    jb_panel, jb_goals = None, None
+    if jailbreak:
+        jb_panel = _build_judge_panel(c, judge_cli)
+        if jb_panel is None:
+            typer.echo("jailbreak  judge-scored jailbreak loop deferred: no judge backend "
+                       "(pass --judge-cli claude|codex or a token)")
+        else:
+            from hfsentinel.attacks.abliteration import PROBES as jb_goals
+            typer.echo(f"jailbreak  harmful-goal seeds × jailbreak scaffolds, scored by the "
+                       f"{'CLI ' + judge_cli if judge_cli else 'token'} judge panel (Laya-triage-gated)")
     result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
                           max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
                           seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
@@ -579,7 +610,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           reference_set=reference_set, halluc_ecosystems=halluc_ecosystems,
                           api_reference=api_reference, check_citations=check_citations,
                           check_sycophancy=check_sycophancy, check_calibration=check_calibration,
-                          nli_scorer=nli_scorer, check_abliteration=check_abliteration, progress=progress)
+                          nli_scorer=nli_scorer, check_abliteration=check_abliteration,
+                          panel=jb_panel, jailbreak_goals=jb_goals, progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "

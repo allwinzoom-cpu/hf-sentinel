@@ -33,6 +33,29 @@ def _report(base, *, trials=8, recon=None):
                     started=dt.datetime(2026, 11, 5, tzinfo=dt.timezone.utc))
 
 
+def _route(**over):
+    r = {"kind": "hf-provider", "requested_model": "org/m", "requested_provider": None, "resolved_model": "org/m",
+         "resolved_provider": "p1", "base_url": "https://router.example/v1", "served_model": None,
+         "revision": "unknown", "resolved_at": "2026-11-05T00:00:00+00:00"}
+    r.update(over)
+    return r
+
+
+def _stub_report(route):
+    import types
+    return types.SimpleNamespace(target={"ref": "u", "route": route}, techniques=[], recon={"over_refusal_rate": 0.1})
+
+
+def test_diff_flags_route_drift_and_is_quiet_when_paths_match():
+    # LSCAN-009: same serving path → no drift; a changed provider (or missing route) → surfaced, never silently equated.
+    same = diff_reports(_stub_report(_route()), _stub_report(_route()))
+    assert same["route_drift"] is False and "Route drift" not in to_table(same)
+    drifted = diff_reports(_stub_report(_route(resolved_provider="p2")), _stub_report(_route()))
+    assert drifted["route_drift"] is True and "Route drift" in to_table(drifted)
+    # a report predating the route field must not manufacture a drift claim we can't prove
+    assert diff_reports(_stub_report(None), _stub_report(_route()))["route_drift"] is False
+
+
 def test_diff_reports_flags_alignment_removal():
     srv_t, base_t = vuln_target.serve(profile="high", seed=1)
     srv_b, base_b = vuln_target.serve(profile="control", seed=1)

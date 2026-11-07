@@ -50,6 +50,7 @@ from hfsentinel.targets import hub
 from hfsentinel.targets.openai_compat import HF_ROUTER, BudgetExceeded
 from hfsentinel.targets.resolve import ResolvedTarget, TargetURIError, UnsupportedTarget, client, parse
 from hfsentinel.targets.resolve import resolve as resolve_target
+from hfsentinel.targets.route_record import build_route_record
 
 EXIT_OK, EXIT_INTERNAL, EXIT_USAGE, EXIT_SCOPE, EXIT_INPUT, EXIT_UNSUPPORTED, EXIT_HUB = 0, 1, 2, 3, 4, 5, 6
 EXIT_FINDINGS = 10
@@ -664,7 +665,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
         campaign["judge_calls_saved"] = campaign.get("judge_calls_saved", 0) + engine_judge_stats["judge_calls_saved"]
         campaign["triage_agreement"] = engine_judge_stats["triage_agreement"]
     target_doc = {"ref": c.target, "kind": t.kind, "resolved_model": t.model, "provider": t.provider,
-                  "request_model": t.request_model}
+                  "request_model": t.request_model,
+                  "route": build_route_record(t).as_dict()}  # LSCAN-009: serving-path record for drift-aware replay
     report_doc = assemble(target=target_doc, plan_steps=plan.steps, runs=result.runs, controls=c,
                           controls_sha256=canonical_sha256(to_config(c)),
                           attestation=attestation.to_dict() if attestation else None, recon=recon,
@@ -733,7 +735,8 @@ def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, r
                 "exhaustive_requests": result.exhaustive_requests,
                 "requests_saved": result.exhaustive_requests - result.requests, "baseline": result.baseline}
     target_doc = {"ref": ref, "kind": t.kind, "resolved_model": t.model, "provider": t.provider,
-                  "request_model": t.request_model}
+                  "request_model": t.request_model,
+                  "route": build_route_record(t).as_dict()}  # LSCAN-009: serving-path record for drift-aware replay
     return assemble(target=target_doc, plan_steps=plan.steps, runs=result.runs, controls=c,
                     controls_sha256=canonical_sha256(to_config(c)),
                     attestation=attestation.to_dict() if attestation else None, recon=recon, campaign=campaign,

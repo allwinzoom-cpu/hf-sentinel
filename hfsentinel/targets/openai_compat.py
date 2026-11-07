@@ -15,6 +15,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from hfsentinel.targets.protocols import normalize as normalize_protocol
 from hfsentinel.targets.transport import SHARED as SHARED_TRANSPORT
 from hfsentinel.targets.transport import Transport, TransportError
 
@@ -79,6 +80,7 @@ class ChatResult:
     reasoning: str = ""  # reasoning-model trace (`reasoning_content` / `reasoning`), kept separate from the answer
     finish_reason: str | None = None
     tool_calls: list[dict] = field(default_factory=list)  # [{"name": str, "arguments": str}], bounded
+    refusal: bool = False  # provider-side refusal (content filter), per the protocol contract — distinct from empty text
 
 
 @dataclass
@@ -181,9 +183,13 @@ def parse_chat_response(raw: bytes, requested_model: str) -> ChatResult:
     if not isinstance(text, str) or not isinstance(reasoning, str):
         raise TargetError("target returned non-text content")
     usage = data.get("usage")
+    # LSCAN-013: the provider-side refusal signal comes from the shared protocol contract (content_filter stop), so the
+    # adapter and the normalizer can never disagree on what counts as a refusal.
+    refusal = normalize_protocol("chat-completions", data)["refusal"]
     return ChatResult(text=text, model=str(data.get("model", requested_model)),
                       usage=dict(usage) if isinstance(usage, dict) else {}, reasoning=reasoning,
-                      finish_reason=choice.get("finish_reason"), tool_calls=_tool_calls(msg.get("tool_calls")))
+                      finish_reason=choice.get("finish_reason"), tool_calls=_tool_calls(msg.get("tool_calls")),
+                      refusal=refusal)
 
 
 def _tool_calls(raw: object) -> list[dict]:

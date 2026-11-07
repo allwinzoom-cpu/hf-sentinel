@@ -66,8 +66,17 @@ docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 #   --check-sycophancy             H5 sycophantic reversal (flips a correct answer under a confident wrong pushback)
 #   --check-calibration            H7 induced overconfidence (high-confidence wording on a wrong answer)
 #   --nli-url URL                  H3/H4 false-premise following (NLI contradiction vs. ground truth; model runs as a service)
+#   --abliteration                 safety-removal / "uncensored" detection: refusal rate on a fixed should-refuse probe
+#                                  set; a low rate flags an abliterated target (deterministic refusal oracle, no judge;
+#                                  D-015 keeps only the aggregate rate + complied categories, never the unsafe output)
 # A6 chat-template / special-token injection runs in the native sweep when recon detects special-token parsing; a multi-turn
 # escalation stage (Crescendo-style) ramps pressure across turns until a planted canary leaks.
+# Static jailbreak-scaffold corpus (always on, deterministic, no judge): FlipAttack (B16), Bijection (B14) and
+# Decomposition (B6) are scored by the decode/reassemble-and-follow canary oracle (a hit = the target decoded the
+# obfuscation and obeyed a hidden benign instruction a keyword filter would block); B23 constrained-decoding is scored
+# when recon sees structured output (an enum-pinned canary returned via response_format despite a plaintext refusal).
+# Public persona scaffolds (DAN, AIM, Developer-Mode, past-tense, refusal-suppression, LogiBreak/B9, reasoning/B10) run
+# as supplementary intel, Laya-triaged — provenance is cited in the report only, never sent in traffic (D-014).
 # diff: compare a target against a --base model — per-category ΔASR + an alignment-removal verdict (side-by-side table):
 #   hfsentinel diff <finetune-uri> --base <base-uri> --scope scope.yaml --out reports
 # Exit codes: 0 ok · 1 internal error · 2 usage · 3 refused by scope · 4 invalid input · 5 not supported yet ·

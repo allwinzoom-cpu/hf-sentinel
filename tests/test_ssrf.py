@@ -27,6 +27,15 @@ def test_guard_host_resolves_names_and_blocks_rebinding():
         ssrf.guard_host("nxdomain.example", resolver=lambda h, p: [])
 
 
+def test_guard_host_blocks_syntactically_private_names_before_dns():
+    # LSCAN-008: a bare container name or *.internal/*.local/*.lan name is refused BEFORE any lookup — even a resolver
+    # that would (falsely) map it to a global address must not get it reachable.
+    for name in ("vllm", "model-server", "api.internal", "box.local", "svc.lan"):
+        with pytest.raises(ssrf.SsrfError):
+            ssrf.guard_host(name, resolver=GLOBAL)
+    ssrf.guard_host("api.example.com", resolver=GLOBAL)  # a normal public FQDN still passes
+
+
 def test_guard_url_requires_https_and_a_global_host():
     with pytest.raises(ssrf.SsrfError):
         ssrf.guard_url("file:///etc/passwd")                           # non-HTTP scheme

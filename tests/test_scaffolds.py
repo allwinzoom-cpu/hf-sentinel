@@ -67,8 +67,10 @@ def test_library_scoping():
     assert {s.catalog_id for s in scaffolds.scored_scaffolds()} == {"B16", "B14", "B6"}
     # persona families are public, catalog-mapped, and never graded here
     personas = {s.name for s in scaffolds.persona_scaffolds()}
-    assert {"DAN (Do Anything Now)", "AIM", "Developer Mode"} <= personas
+    assert {"DAN (Do Anything Now)", "AIM", "Developer Mode",
+            "Formal-logic reframing (LogiBreak)", "Reasoning-model self-jailbreak"} <= personas
     assert all(not s.scored for s in scaffolds.persona_scaffolds())
+    assert {s.catalog_id for s in scaffolds.persona_scaffolds()} >= {"B9", "B10"}  # B9/B10 exercised as intel
 
 
 def test_encode_scaffolds_round_trip():

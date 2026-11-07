@@ -17,6 +17,8 @@ import socket
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
+from hfsentinel.targets.private_targeting import is_private_host
+
 HOSTED_ENV = "HFS_HOSTED"
 ALLOWED_SCHEMES = frozenset({"https"})
 REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
@@ -39,6 +41,10 @@ def guard_host(host: str, *, port: int = 443, resolver: Callable[[str, int], lis
     host = (host or "").strip("[]")
     if not host:
         raise SsrfError("empty host")
+    # LSCAN-008: fail closed on a syntactically private host BEFORE any DNS lookup — a bare container name or a
+    # *.internal/*.local/*.lan name that happens to resolve to a public address must never be reached in hosted mode.
+    if is_private_host(host):
+        raise SsrfError(f"{host}: syntactically private host (bare name / RFC-1918 / *.internal) not allowed")
     try:
         ipaddress.ip_address(host)
         addrs = [host]

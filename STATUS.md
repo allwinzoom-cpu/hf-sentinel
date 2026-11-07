@@ -163,6 +163,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-002/006 · SARIF now carries honesty metadata — each result exposes `evidence_level` (what the oracle actually demonstrated), and the run block carries the pinned `frameworks` + `coverage_claim` (partial-dynamic). `tests/test_report.py::test_sarif_meets_github_upload_rules` extended; green.
 
+- LSCAN-008 · Private-targeting policy wired into the live SSRF guard — `ssrf.guard_host` now fails closed on a syntactically private host (bare container name, RFC-1918 literal, `*.internal`/`*.local`/`*.lan`) BEFORE any DNS lookup, so a private name that resolves to a public address can't be reached in hosted mode. `tests/test_ssrf.py` + `test_private_targeting.py` 12/12 green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

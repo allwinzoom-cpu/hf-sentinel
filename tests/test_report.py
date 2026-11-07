@@ -156,7 +156,11 @@ def test_sarif_meets_github_upload_rules(vuln_report):
         loc = res["locations"][0]["physicalLocation"]
         assert loc["artifactLocation"]["uri"] == "configs/sentinel.yaml" and loc["region"]["startLine"] == 1
         fingerprints.add(res["partialFingerprints"]["primaryLocationLineHash"])
+        assert res["properties"]["evidence_level"]  # LSCAN-002: oracle-demonstrated level travels into SARIF
     assert len(fingerprints) == len(run["results"])
+    # LSCAN-006: the pinned frameworks + partial-coverage claim reach SARIF consumers, not just the JSON report.
+    assert run["properties"]["coverage_claim"] == "partial-dynamic"
+    assert run["properties"]["frameworks"]["mitre_atlas"]["revision"] == "5.6.0"
     crit = next(r for r in rules if r["id"] == "hfsentinel/C2")
     assert float(crit["properties"]["security-severity"]) > 9.0  # GitHub: > 9.0 = critical
     again = json.loads(render.to_sarif(vuln_report, anchor="configs/sentinel.yaml"))

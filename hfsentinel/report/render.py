@@ -112,14 +112,17 @@ def to_sarif(report: Report, *, anchor: str = "sentinel.yaml", catalog: Catalog 
                 "logicalLocations": [{"name": _printable(ref, 300), "kind": "resource"}]}],
             "partialFingerprints": {"primaryLocationLineHash": f"{stable[:16]}:1", "hfsentinel/v1": stable},
             "properties": {"severity": f.severity, "asr": f.asr, "asr_ci95": [lo, hi], "trials": f.trials,
-                           "successes": f.successes, "evidence_sha256": f.evidence.hash, "finding_id": f.finding_id}})
+                           "successes": f.successes, "evidence_sha256": f.evidence.hash, "finding_id": f.finding_id,
+                           "evidence_level": f.evidence_level}})  # LSCAN-002: what the oracle actually demonstrated
     doc = {"$schema": SARIF_SCHEMA, "version": "2.1.0", "runs": [{
         "tool": {"driver": {"name": "HF-Sentinel", "version": report.tool["version"],
                             "semanticVersion": report.tool["version"], "rules": rules}},
         "automationDetails": {"id": f"hfsentinel/{stable_slug(ref)}/"},
         "results": results,
         "properties": {"grade": report.grade.get("overall"), "report_sha256": report.report_sha256,
-                       "build": report.tool["build"]}}]}
+                       "build": report.tool["build"],
+                       "frameworks": report.frameworks.get("frameworks"),  # LSCAN-006: pinned editions/revisions
+                       "coverage_claim": report.frameworks.get("coverage_claim")}}]}
     return json.dumps(doc, indent=1, ensure_ascii=False) + "\n"
 
 

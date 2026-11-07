@@ -37,7 +37,7 @@ def test_normalize_maps_from_catalog_and_skips_zero_success():
     assert a1.owasp == ["LLM01", "ASI01"] and a1.atlas == ["AML.T0051.000"] and a1.effort == "E"
     assert a1.asr == 0.5 and a1.asr_ci95 == wilson_ci(5, 10) and a1.evidence.hash == H
     assert a1.status == "candidate" and a1.severity == "Unrated"
-    assert b6.status == "experimental"  # catalog Candidate technique: never scored (Section 4.0)
+    assert b6.status == "candidate"  # B6 is now Ready (scored); finding stays 'candidate' until Section 2.2 confirmation
     assert a1.engine_build.engines == ["probe-suite"]
 
 

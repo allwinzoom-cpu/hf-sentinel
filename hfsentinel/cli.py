@@ -328,6 +328,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          jailbreak: Annotated[bool, _opt("Judge-scored jailbreak loop: wrap harmful-goal seeds in jailbreak scaffolds, "
                                          "send to the target, grade responses with the judge panel (needs --judge-cli "
                                          "or a token).", JDG, "--jailbreak/--no-jailbreak")] = False,
+         adaptive: Annotated[bool, _opt("B7 adaptive multi-turn: an attacker LLM (via --judge-cli, else claude) adapts "
+                                        "its prompt each turn toward the canary objective; host-only.", FUZ,
+                                        "--adaptive/--no-adaptive")] = False,
          via: ViaOpt = Via.auto,
          profile: Annotated[str | None, _opt("quick|standard|deep|agentic|hallucination|diff|custom", SEL)] = None,
          categories: Annotated[str | None, _opt("Categories, e.g. A,B,H.", SEL)] = None,
@@ -451,7 +454,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              api_reference=_load_api_reference(api_reference), check_citations=bool(check_citations),
              check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration),
              check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli,
-             jailbreak=bool(jailbreak))
+             jailbreak=bool(jailbreak), adaptive=bool(adaptive))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False,
@@ -558,7 +561,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
              api_reference: set[str] | None = None, check_citations: bool = False,
              check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
-             check_abliteration: bool = False, judge_cli: str | None = None, jailbreak: bool = False) -> None:
+             check_abliteration: bool = False, judge_cli: str | None = None, jailbreak: bool = False,
+             adaptive: bool = False) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -603,6 +607,16 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
             from hfsentinel.attacks.abliteration import PROBES as jb_goals
             typer.echo(f"jailbreak  harmful-goal seeds × jailbreak scaffolds, scored by the "
                        f"{'CLI ' + judge_cli if judge_cli else 'token'} judge panel (Laya-triage-gated)")
+    adaptive_attacker = None
+    if adaptive:
+        from hfsentinel.agents.adaptive_attacker import cli_attacker
+        from hfsentinel.judges.cli_judge import available
+        cli = judge_cli or "claude"
+        if available(cli):
+            adaptive_attacker = cli_attacker(cli)
+            typer.echo(f"adaptive   B7 multi-turn: attacker LLM '{cli}' refines toward the canary objective (host-only)")
+        else:
+            typer.echo(f"adaptive   B7 deferred: attacker CLI '{cli}' not on PATH (use claude|codex)")
     result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
                           max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
                           seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
@@ -611,7 +625,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           api_reference=api_reference, check_citations=check_citations,
                           check_sycophancy=check_sycophancy, check_calibration=check_calibration,
                           nli_scorer=nli_scorer, check_abliteration=check_abliteration,
-                          panel=jb_panel, jailbreak_goals=jb_goals, progress=progress)
+                          panel=jb_panel, jailbreak_goals=jb_goals, adaptive_attacker=adaptive_attacker,
+                          progress=progress)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "
@@ -630,7 +645,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                 "baseline": result.baseline, "baseline_requests": result.baseline_requests,
                 "judge_calls_made": result.judge_calls_made, "judge_calls_saved": result.judge_calls_saved,
                 "triage_agreement": result.triage_agreement, "experimental": result.experimental,
-                "abliteration": result.abliteration,
+                "abliteration": result.abliteration, "adaptive": result.adaptive,
                 "strategy_library": "read-only (no write-back)" if library.write_failed else str(library.path)}
     if result.abliteration.get("under_refusing"):
         typer.echo(f"abliter.  under-refusing target: refusal rate {result.abliteration['refusal_rate']} on "

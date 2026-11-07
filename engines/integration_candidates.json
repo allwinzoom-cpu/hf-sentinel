@@ -1,0 +1,42 @@
+{
+  "schema": "lscan-005 external-tool integration inventory: each candidate records whether it is integrated, and (per the acceptance contract) its unique value, installed-version proof, fallback, egress/data-flow needs and a reproducible scorecard reference. 'documentation-only' and 'rejected' are NOT integrated; an integrated engine owns >=1 capability nobody else owns (preserves one-owner-per-capability).",
+  "statuses": ["integrated-engine", "borrow", "documentation-only", "rejected"],
+  "candidates": {
+    "garak": {
+      "status": "integrated-engine",
+      "owner_capability": "static-jailbreak-probe-breadth",
+      "unique_value": "broad static probe + deterministic detector breadth (promptinject, dan, encoding, leakreplay, xss)",
+      "installed_version_proof": "engines/inventory/probe-suite.json (probe names) + engines/versions.json pin",
+      "fallback": "built-by-us canary oracles for the catalog IDs it would cover",
+      "egress": "container-only, no network at scan time; probes run offline against the target",
+      "scorecard": "docs/scorecards/assessments/garak.json"
+    },
+    "pyrit": {
+      "status": "integrated-engine",
+      "owner_capability": "adaptive-multiturn-and-converters",
+      "unique_value": "composable converters + adaptive attacker-LLM orchestration (Crescendo/TAP)",
+      "installed_version_proof": "engines/inventory/orchestrator.json + engines/versions.json pin",
+      "fallback": "built-by-us adaptive_attacker.py (B7) for the benign-canary multi-turn path",
+      "egress": "attacker-LLM endpoint only (operator-provided); container-scoped, no telemetry",
+      "scorecard": "docs/scorecards/assessments/pyrit.json"
+    },
+    "deepteam": {
+      "status": "borrow",
+      "owner_capability": null,
+      "unique_value": "no unique capability today vs probe-suite/orchestrator; framework mapping is Phase-4 (crosscheck)",
+      "installed_version_proof": "not installed as an engine; assessed from upstream inventory",
+      "fallback": "crosscheck (Phase 4) owns framework mapping",
+      "egress": "n/a (not integrated)",
+      "scorecard": "docs/adr/0001-tooling.md (borrow/deferred verdict)"
+    },
+    "promptfoo": {
+      "status": "documentation-only",
+      "owner_capability": null,
+      "unique_value": "CI-native red-team strategies (Crescendo/GOAT/multi-turn); overlaps orchestrator's adaptive capability, so no new owner",
+      "installed_version_proof": "not installed; assessed from upstream docs only",
+      "fallback": "orchestrator (PyRIT) owns adaptive multi-turn; no duplicate engine added",
+      "egress": "remote generation + telemetry/data-handling to resolve before any adoption (see Promptfoo data-handling docs); not cleared for container-only D-009 use",
+      "scorecard": "pending — a reproducible scorecard is required before this can move past documentation-only"
+    }
+  }
+}

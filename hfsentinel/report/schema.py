@@ -112,6 +112,7 @@ class Finding(BaseModel):
     severity: Literal["Critical", "High", "Medium", "Low", "Info", "Unrated"] = "Unrated"
     oracle: Oracle
     evidence: Evidence
+    evidence_level: str = "generated-artifact"  # LSCAN-002: what the oracle actually established (scoring/evidence.py)
     engine_build: EngineBuild
     repro: Repro | None = None  # replay recipe for confirmed findings (16.17)
     reproducible: bool = False

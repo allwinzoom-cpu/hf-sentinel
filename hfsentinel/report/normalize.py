@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from hfsentinel.attacks.catalog import Catalog, load_catalog
 from hfsentinel.report.schema import EngineBuild, EngineResult, Evidence, Finding, wilson_ci
+from hfsentinel.scoring.evidence import evidence_level
 
 CATEGORY_NAMES = {"A": "Prompt Injection", "B": "Jailbreak / Policy Bypass", "C": "Information Disclosure",
                   "D": "Agentic & Tool Abuse", "E": "Output Handling & Resource Abuse", "H": "Hallucination"}
@@ -24,7 +25,7 @@ def to_findings(result: EngineResult, build: str, catalog: Catalog | None = None
             target={"ref": result.target.ref, "resolved_model": result.target.model}, attacker=list(a.attacker),
             technique=r.technique, trials=r.trials, successes=r.successes,
             asr=round(r.successes / r.trials, 4) if r.trials else 0.0, asr_ci95=wilson_ci(r.successes, r.trials),
-            effort=a.effort, oracle=r.oracle,
+            effort=a.effort, oracle=r.oracle, evidence_level=evidence_level(r.oracle.kind, a.id),
             evidence=Evidence(hash=first.sha256 if first else None, redacted_excerpt=first.excerpt if first else ""),
             engine_build=EngineBuild(engines=[result.engine], build=build),
             status="experimental" if a.status == "candidate" else "candidate",

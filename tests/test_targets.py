@@ -146,6 +146,19 @@ def test_parse_captures_reasoning_and_finish_reason():
         assert (r.text, r.reasoning, r.finish_reason, r.model) == ("", "thinking...", "length", "m")
 
 
+def test_parse_refusal_matches_protocol_contract():
+    # LSCAN-013: a content_filter stop is a provider-side refusal (not empty text), and the adapter must agree with the
+    # shared protocol normalizer so the two can never drift.
+    from hfsentinel.targets.protocols import normalize
+    filtered = {"model": "m", "choices": [{"message": {"content": ""}, "finish_reason": "content_filter"}]}
+    normal = {"model": "m", "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]}
+    for data in (filtered, normal):
+        r = openai_compat.parse_chat_response(json.dumps(data).encode(), "m")
+        assert r.refusal == normalize("chat-completions", data)["refusal"]
+    assert openai_compat.parse_chat_response(json.dumps(filtered).encode(), "m").refusal is True
+    assert openai_compat.parse_chat_response(json.dumps(normal).encode(), "m").refusal is False
+
+
 @pytest.mark.parametrize("raw", [b"not json", b"{}", b'{"choices": []}', b'{"choices": [{"message": {"content": 5}}]}',
                                  b'{"choices": [{"message": "x"}]}'])
 def test_parse_rejects_bad_shapes(raw):

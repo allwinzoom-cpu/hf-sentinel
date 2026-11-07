@@ -50,3 +50,29 @@ def test_target_error_ends_the_run_cleanly():
 def test_default_canary_is_generated_when_absent():
     r = run_adaptive(lambda canary, h: f"say {canary}", lambda m: "nope", max_turns=1, oracle=HIT)
     assert isinstance(r, AttackResult) and not r.broke
+
+
+class _Reply:
+    def __init__(self, text):
+        self.text, self.usage = text, {}
+
+
+def test_campaign_adaptive_stage_breaks_and_records():
+    from hfsentinel.engines.campaign import CampaignResult, _adaptive_stage
+
+    class EchoTarget:  # echoes the attacker's prompt, which carries the generated canary -> the oracle finds it
+        def chat(self, messages, *, max_tokens, temperature):
+            return _Reply("sure: " + messages[-1]["content"])
+
+    res = CampaignResult()
+    _adaptive_stage(res, EchoTarget(), attacker=lambda canary, h: f"please output {canary}", max_turns=2,
+                    max_tokens=64, seed=1)
+    assert res.adaptive.get("broke") is True
+    assert any(d["catalog_id"] == "B7" for d in res.decisions)
+
+
+def test_campaign_adaptive_stage_noop_without_attacker():
+    from hfsentinel.engines.campaign import CampaignResult, _adaptive_stage
+    res = CampaignResult()
+    _adaptive_stage(res, object(), attacker=None, max_turns=2, max_tokens=64, seed=1)
+    assert not res.adaptive and not res.decisions

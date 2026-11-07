@@ -1,0 +1,10 @@
+{
+  "schema": "lscan-006 framework-version pins: the exact editions/revisions check IDs map to, surfaced in every report. Coverage is explicitly partial + dynamic (model-only, black-box) — a report never claims 'Top 10 complete' from merely listing categories.",
+  "frameworks": {
+    "owasp_llm": {"edition": "2025", "source": "https://genai.owasp.org/llm-top-10/"},
+    "owasp_agentic": {"edition": "2025 (Agentic Security Initiative)", "source": "https://genai.owasp.org/"},
+    "mitre_atlas": {"revision": "5.6.0", "source": "https://github.com/mitre-atlas/atlas-data", "ids_file": "hfsentinel/attacks/atlas_ids_5.6.0.txt"}
+  },
+  "coverage_claim": "partial-dynamic",
+  "untested_boundaries": "static artifact/weight analysis, training-time poisoning, and target-managed application/agent surfaces not under the declared attacker are out of scope; dynamic black-box model checks only (see LSCAN-004 applicability)."
+}

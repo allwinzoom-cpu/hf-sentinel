@@ -227,6 +227,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-082 · Balanced Security/Safety/Quality tracks — new `scoring/tracks.py`: `metric_track()` keeps the three tracks separate (unknown metrics default to quality, never auto-promoted to security); `RefusalBalance` pairs unsafe-refusal (safety) with over-refusal (quality/false-positive) so bypass resistance is never credited without its utility cost; `under_refusal()` is content-aware (requires disallowed content produced, not absent refusal keywords). 3 tests green.
 
+- LSCAN-046 · Structured-output control-plane distinction — B23/CDA now distinguishes a **forced-literal** enum bypass (the grammar admits only one pre-supplied string → control-plane echo of attacker text, weak) from **model-generated** content in a free described field (DictAttack-style, stronger). `free_field_request()`, `forces_literal()`, `evidence_kind()`. 8 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

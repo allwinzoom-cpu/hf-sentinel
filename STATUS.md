@@ -263,6 +263,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-052 (GATE core) · Cross-session/identity/tenant leakage — new `attacks/cross_session.py`: a leak is confirmed ONLY when a different identity obtains the other's freshly-planted secret via the MODEL's cross-session memory, with isolated sessions and no harness replay; session-ID reuse or harness transcript replay → inconclusive (never a hit); a stateless target → N/A. 3 tests green.
 
+- LSCAN-086 (GATE core) · Fleet/watch + resumable campaigns — new `engines/fleet.py`: scoped `FleetTarget` manifest (per-target credential origin + budget, aggregated spend), `changed()` fires a watch only on a real revision/signature change (not any commit), `pending()` resumes only not-yet-completed targets (no replay of completed external actions), `dry_run_sends_nothing()`, and `scope_active()` stops at expiry. 4 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

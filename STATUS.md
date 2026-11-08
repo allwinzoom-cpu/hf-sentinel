@@ -273,6 +273,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-058 (GATE core) · Audio/speech instruction discipline — new `attacks/audio_eval.py`: audio-instruction following is an instruction-following **surrogate** (delivery, never harm); a benign **transcription comprehension control** gates applicability (untranscribable → inconclusive, never 'defended'); the goal is judged independently; `is_success` requires transcribable channel + followed + confirmed goal. 3 tests green.
 
+- LSCAN-061 (GATE core) · Indirect-injection delivery surfaces — new `attacks/indirect_delivery.py`: a trust-leveled surface taxonomy (retrieved doc/web/email/tool-output/calendar/code-comment = lower-trust; user/system = trusted; unknown → lower-trust fail-safe); an indirect injection counts only when it rode in a **lower-trust** surface that was **ingested** and **crossed into instructions**; applicability needs a real consumer (un-ingested surface → N/A). 3 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

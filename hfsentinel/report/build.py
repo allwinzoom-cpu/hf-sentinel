@@ -192,7 +192,7 @@ def _synthetic_runs(engine_results, catalog: Catalog):
 
 def findings_for(rows: list[TechniqueRow], runs: dict[str, TechniqueRun], target: dict, build: str,
                  catalog: Catalog, engine_meta: dict[str, tuple[str, str, str]] | None = None,
-                 temperature: float = 0.0) -> list[Finding]:
+                 temperature: float = 0.0, max_tokens: int = 256) -> list[Finding]:
     by_id, out, meta = catalog.by_id(), [], engine_meta or {}
     for row in rows:
         if row.outcome != "confirmed":
@@ -203,8 +203,14 @@ def findings_for(rows: list[TechniqueRow], runs: dict[str, TechniqueRun], target
         # Native findings carry a replay recipe (16.17); engine findings replay through their engine, not this sweep.
         repro = None
         if engine == NATIVE_ENGINE and getattr(run, "planned_trials", 0) >= 1:
-            repro = Repro(catalog_id=a.id, seed=run.seed, trials=run.planned_trials, temperature=temperature,
-                          mutator_chain=list(run.mutator_chain))
+            # LSCAN-024: a complete, versioned manifest — exact generation settings, served-route pin and the dependency
+            # revisions, so a later replay against a drifted dependency/route is an explicit incompatibility, not silent.
+            repro = Repro(
+                catalog_id=a.id, seed=run.seed, trials=run.planned_trials, temperature=temperature,
+                max_tokens=max_tokens, mutator_chain=list(run.mutator_chain),
+                system_instruction_owner="harness",  # the scanner authors the attack prompt (LSCAN-004)
+                replayable="exact", route=dict(target.get("route") or {}),
+                versions={"catalog_version": str(catalog.catalog_version), "schema": SCHEMA_VERSION, "tool_build": build})
         out.append(Finding(
             finding_id=canonical_sha256({"t": target["ref"], "id": a.id, "e": first.sha256 if first else ""})[:32],
             catalog_id=a.id, category=CATEGORY_NAMES[a.category], owasp=a.owasp, atlas=a.atlas, target=target,
@@ -230,7 +236,7 @@ def assemble(*, target: dict, plan_steps, runs: list[TechniqueRun], controls, co
     rows = technique_rows(plan_steps, by_run, native=native, k=k, catalog=catalog, baseline=baseline)
     build = build_id()
     findings = findings_for(rows, by_run, target, build, catalog, engine_meta,
-                            temperature=controls.target_io.temperature)
+                            temperature=controls.target_io.temperature, max_tokens=controls.target_io.max_tokens)
     tested = {r.category for r in rows if r.disposition == "run"}
     # grade on lift (16.4): the attack's own contribution, not raw ASR
     scored = [grading.Scored(r.category, r.severity, r.effort, r.lift if r.lift is not None else (r.asr or 0.0))

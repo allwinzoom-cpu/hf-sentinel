@@ -28,6 +28,8 @@ def replay(repro: Repro, target, *, gov=None, max_tokens: int = 256, concurrency
         gov = Governor(Ledger(max_requests=repro.trials * 4 + 8, budget_usd=10.0), concurrency=max(1, concurrency))
     canaries = CanaryRun(repro.seed, **({"sink_host": sink_host} if sink_host else {}))
     mutator = repro.mutator_chain[0] if repro.mutator_chain else None
+    # Replay at the manifest's exact generation settings (LSCAN-024); fall back to the arg only for an older recipe that
+    # predates the captured max_tokens.
     return run_technique(target, gov, repro.catalog_id, trials=repro.trials, temperature=repro.temperature,
-                         max_tokens=max_tokens, concurrency=concurrency, canaries=canaries, seed=repro.seed,
-                         adaptive=False, mutator=mutator)
+                         max_tokens=repro.max_tokens or max_tokens, concurrency=concurrency, canaries=canaries,
+                         seed=repro.seed, adaptive=False, mutator=mutator)

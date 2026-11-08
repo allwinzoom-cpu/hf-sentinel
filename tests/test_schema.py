@@ -54,3 +54,22 @@ def test_engine_result_rejects_bad_payloads(mutate, msg):
     mutate(r)
     with pytest.raises(ValidationError, match=msg):
         EngineResult.model_validate(r)
+
+
+def test_repro_manifest_defaults_are_backward_compatible():
+    # LSCAN-024: an old-shape recipe still validates; the new reproducibility fields have safe defaults.
+    from hfsentinel.report.schema import Repro
+    r = Repro(catalog_id="A1", seed=7, trials=10, temperature=0.7)
+    assert r.max_tokens == 256 and r.replayable == "exact" and r.system_instruction_owner == "harness"
+    assert r.route == {} and r.versions == {}
+
+
+def test_replay_compatibility_flags_dependency_drift_and_passes_on_match():
+    from hfsentinel.report.schema import Repro, replay_compatibility
+    r = Repro(catalog_id="A1", seed=1, trials=5, temperature=0.0, max_tokens=512,
+              versions={"catalog_version": "7", "schema": "0.1", "tool_build": "sha256:" + "a" * 12})
+    env = dict(r.versions)
+    assert replay_compatibility(r, env) == []                       # identical env -> exact replay is valid
+    env["catalog_version"] = "8"
+    assert replay_compatibility(r, env) == ["catalog_version"]       # a changed dependency is surfaced
+    assert replay_compatibility(r, {}) == sorted(r.versions)         # fail-closed: unknown env reports every key

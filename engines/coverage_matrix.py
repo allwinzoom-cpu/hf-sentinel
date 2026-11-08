@@ -143,6 +143,91 @@ def render(caps: dict | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+VARIATION_OUT = ROOT / "docs" / "variation_coverage.md"
+
+# Implemented delivery surfaces (LSCAN-087) -> the catalog techniques each one actually exercises. This is the real,
+# bounded surface list, not an unbounded Cartesian product of every placement x protocol x feature combination.
+DELIVERY_SURFACES: dict[str, tuple[str, ...]] = {
+    "direct-chat": ("A1", "A6"),
+    "indirect/hidden-injection": ("A2", "A3"),
+    "image-input": ("A4",),
+    "exfiltration-channel": ("A5",),
+    "encoding-mutator": ("B2", "B6", "B14", "B15", "B16"),
+    "persona-scaffold": ("B1", "B9", "B10", "B17", "B18", "B19", "B21"),
+    "many-shot / long-context": ("B5",),
+    "multilingual": ("B3",),
+    "structured-output": ("B23",),
+    "best-of-n": ("B13",),
+    "multi-turn": ("B4", "B11"),
+    "adaptive-search (PAIR/TAP)": ("B7",),
+    "extraction": ("C1", "C2", "C3", "C4"),
+    "active-content / code": ("E1", "E2", "E3", "E5"),
+}
+
+
+def variation_coverage(caps: dict | None = None) -> list[dict]:
+    """Per-technique coverage across the implemented dimensions (LSCAN-087): family, oracle kind, evidence level, replay
+    level and run status, derived only from implemented metadata (catalog + oracle registry + evidence rules + the
+    capability matrix). A gated technique (deferred/experimental) is marked not-runnable so an unsupported cell can never
+    improve a grade."""
+    from hfsentinel.attacks.oracles import ORACLES
+    from hfsentinel.scoring.evidence import evidence_level
+    caps = caps or load_caps()
+    cat = _catalog_by_id()
+    status = caps["status"]
+    rows = []
+    for cid in catalog_ids():
+        a = cat.get(cid)
+        orc = ORACLES.get(cid)
+        kind = orc.kind if orc else "none"
+        try:
+            ev = evidence_level(kind, cid)
+        except Exception:  # noqa: BLE001 — an unmapped kind just yields an unknown level, never a crash
+            ev = "unknown"
+        st = status.get(cid, "?")
+        rows.append({"id": cid, "family": a.category if a else "?", "oracle": kind,
+                     "evidence_level": ev, "replay": "exact" if kind == "deterministic" else "recipe-only",
+                     "status": st, "runnable": st not in ("deferred", "experimental", "?")})
+    return rows
+
+
+def _catalog_by_id() -> dict:
+    import types
+
+    import yaml
+
+    doc = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
+    return {a["id"]: types.SimpleNamespace(**a) for a in doc["attacks"]}
+
+
+def render_variation(caps: dict | None = None) -> str:
+    caps = caps or load_caps()
+    rows = variation_coverage(caps)
+    runnable = [r for r in rows if r["runnable"]]
+    gated = [r for r in rows if not r["runnable"]]
+    surfaces_ids = {c for ids in DELIVERY_SURFACES.values() for c in ids}
+    unmapped = sorted(r["id"] for r in rows if r["id"] not in surfaces_ids)
+    lines = ["# Variation coverage (LSCAN-087)", "",
+             ("Per-technique coverage across the implemented dimensions — family, oracle, evidence level, replay level "
+              "and run status — derived from implemented metadata only (catalog + oracle registry + evidence rules + the "
+              "capability matrix). This is bounded per-technique coverage, **not** an exhaustive Cartesian product of "
+              "every placement x protocol x feature combination."), "",
+             (f"**{len(runnable)} of {len(rows)} techniques are runnable**; {len(gated)} are gated "
+              "(deferred/experimental) and **cannot improve a grade**. A \"no findings\" result is reported only with "
+              "this tested coverage and its limitations — absence of a capability is observed in recon, never assumed."),
+             "", "## Techniques", "",
+             "| ID | Family | Oracle | Evidence level | Replay | Status | Runnable |", "|---|---|---|---|---|---|---|"]
+    for r in rows:
+        lines.append(f"| {r['id']} | {r['family']} | {r['oracle']} | {r['evidence_level']} | {r['replay']} | "
+                     f"{r['status']} | {'yes' if r['runnable'] else 'no (gated)'} |")
+    lines += ["", "## Delivery surfaces (implemented)", "", "| Surface | Catalog IDs |", "|---|---|"]
+    for surface, ids in DELIVERY_SURFACES.items():
+        lines.append(f"| {surface} | {', '.join(ids)} |")
+    lines += ["", (f"> Techniques not mapped to a delivery surface above: {', '.join(unmapped) or 'none'} "
+                   "(untested combination, reported — not claimed).")]
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: list[str]) -> int:
     acc = account()
     gaps = inventory_gaps()
@@ -156,7 +241,8 @@ def main(argv: list[str]) -> int:
         print(f"OK: {len(acc['ids'])} catalog IDs accounted, inventory citations verified")
         return 0
     OUT.write_text(render(), encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT)} ({len(acc['ids'])} IDs accounted)")
+    VARIATION_OUT.write_text(render_variation(), encoding="utf-8")
+    print(f"wrote {OUT.relative_to(ROOT)} and {VARIATION_OUT.relative_to(ROOT)} ({len(acc['ids'])} IDs accounted)")
     return 0
 
 

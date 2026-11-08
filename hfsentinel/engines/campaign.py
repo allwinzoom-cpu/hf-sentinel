@@ -500,6 +500,10 @@ def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, tria
     keyword_filter = profile is not None and getattr(profile, 'has', lambda _n: None)('keyword_filter') is True
     if not keyword_filter or not mutators:
         return  # encoding escalation only helps against a filter; otherwise a 0-hit is a true negative
+    # LSCAN-027: escalation SEARCHES several mutators and selects the first that works — a selected mutator's own trials
+    # are biased upward. So search only DISCOVERS a candidate; the finding is then scored on a HELD-OUT confirmation with
+    # independently-planted canaries (a fresh book + a disjoint seed), and the search trials never score the finding.
+    held_out = CanaryRun(seed + 777, sink_host=canaries.sink_host)
     for idx, run in enumerate(list(res.runs)):
         if run.catalog_id not in CANARY_IDS or confirmed(run.hits, run.trials, run.temp0_hit):
             continue
@@ -508,16 +512,28 @@ def _depth_escalate(res: CampaignResult, target, gov, canaries, *, profile, tria
                                 max_tokens=max_tokens, concurrency=concurrency, canaries=canaries,
                                 seed=seed + 100 + mi, adaptive=True, mutator=mut, keep_transcripts=keep_transcripts)
             res.depth_requests += esc.attempts
-            ok = confirmed(esc.hits, esc.trials, esc.temp0_hit)
-            res.escalations.append({'id': run.catalog_id, 'mutator': mut, 'hits': esc.hits, 'trials': esc.trials,
-                                    'confirmed': ok})
+            discovered = esc.hits >= 1  # the mutator elicited the canary at least once: a candidate worth confirming
+            res.escalations.append({'id': run.catalog_id, 'mutator': mut, 'phase': 'search', 'hits': esc.hits,
+                                    'trials': esc.trials, 'discovered': discovered, 'confirmed': False})
+            if not discovered:
+                continue
+            conf = run_technique(target, gov, run.catalog_id, trials=trials, temperature=temperature,
+                                 max_tokens=max_tokens, concurrency=concurrency, canaries=held_out,
+                                 seed=seed + 900 + mi, adaptive=False, mutator=mut, keep_transcripts=keep_transcripts)
+            res.depth_requests += conf.attempts
+            ok = confirmed(conf.hits, conf.trials, conf.temp0_hit)
+            res.escalations.append({'id': run.catalog_id, 'mutator': mut, 'phase': 'held-out-confirm',
+                                    'hits': conf.hits, 'trials': conf.trials, 'confirmed': ok, 'searched': mi + 1})
             if ok:
-                res.runs[idx] = esc  # the escalated result is now the technique's outcome
-                res.decide('S4', run.catalog_id, f'escalated via {mut}',
-                           f'{esc.hits}/{esc.trials} after breadth got {run.hits}/{run.trials} (filter bypassed)')
+                res.runs[idx] = conf  # the finding is scored on the held-out confirmation, not the selection trials
+                res.decide('S4', run.catalog_id, f'escalated via {mut} (held-out confirmed)',
+                           f'discovered over {mi + 1} mutator(s); held-out {conf.hits}/{conf.trials} '
+                           f'(search {esc.hits}/{esc.trials} not used for scoring)')
                 break
+            res.decide('S4', run.catalog_id, f'{mut} discovered but not confirmed',
+                       f'search {esc.hits}/{esc.trials} did not hold up on held-out trials {conf.hits}/{conf.trials}')
         else:
-            res.decide('S4', run.catalog_id, 'no bypass found',
+            res.decide('S4', run.catalog_id, 'no confirmed bypass',
                        f'tried {len(mutators)} encoding mutators on the weak spot')
 
 

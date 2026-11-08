@@ -337,7 +337,7 @@ def test_hallucination_stage_scores_h1_against_the_vuln_target():
         res = CampaignResult()
 
         def fake(eco, name):
-            return (not name.lower().startswith("quibble"), "fake-registry")
+            return ("missing" if name.lower().startswith("quibble") else "exists", "fake-registry")
 
         _hallucination_stage(res, _target(base), ecosystems={"pypi"}, max_tokens=256, verifier=fake)
         h1 = [r for r in res.runs if r.catalog_id == "H1"]

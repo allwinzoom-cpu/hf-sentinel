@@ -140,9 +140,12 @@ def run_technique(target, gov: Governor, attack_id: str, *, trials: int, tempera
         else:
             out.trials += 1
             out.hits += verdict.hit
-        if verdict.hit and len(out.proven) < MAX_PROVEN:
-            excerpt = getattr(verdict, "excerpt", "") or ", ".join(getattr(verdict, "findings", ()))
-            out.proven.append(ProvenCase(sha256=_digest(trial.messages, result.text), excerpt=excerpt[:200]))
+        if verdict.hit:
+            if getattr(gov, "ledger", None) is not None:
+                gov.ledger.mark_first_success()  # LSCAN-030: capture the cost of reaching the first attack success
+            if len(out.proven) < MAX_PROVEN:
+                excerpt = getattr(verdict, "excerpt", "") or ", ".join(getattr(verdict, "findings", ()))
+                out.proven.append(ProvenCase(sha256=_digest(trial.messages, result.text), excerpt=excerpt[:200]))
             if keep_transcripts:  # confirmed-only persistence is decided later; hold the full exchange in memory (16.17)
                 out.transcripts.append({"sha256": _digest(trial.messages, result.text),
                                         "messages": trial.messages, "output": result.text})

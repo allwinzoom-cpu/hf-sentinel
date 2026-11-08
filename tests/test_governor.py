@@ -137,6 +137,22 @@ def test_usd_cap_reported_and_unpriced():
         one(g)
 
 
+def test_first_success_cost_is_captured_once_at_the_first_hit():
+    # LSCAN-030: the meter is snapshotted at the FIRST attack hit and never moved by later hits.
+    c = FakeClock()
+    g = gov(c)
+    one(g, usage={"prompt_tokens": 10, "completion_tokens": 5, "estimated_cost": 0.002})
+    one(g, usage={"prompt_tokens": 20, "completion_tokens": 10, "estimated_cost": 0.003})
+    assert g.ledger.snapshot()["first_success_requests"] == -1    # no hit marked yet
+    g.ledger.mark_first_success()                                  # first attack hit, after 2 queries
+    snap = g.ledger.snapshot()
+    assert snap["first_success_requests"] == 2 and snap["first_success_tokens"] == 45
+    assert snap["first_success_usd"] == pytest.approx(0.005)
+    one(g, usage={"prompt_tokens": 100, "completion_tokens": 100, "estimated_cost": 1.0})
+    g.ledger.mark_first_success()                                  # a later hit must not move it (idempotent)
+    assert g.ledger.snapshot()["first_success_requests"] == 2
+
+
 @pytest.mark.parametrize("usage", [{"estimated_cost": True}, {"estimated_cost": -1}, {"estimated_cost": "1"},
                                    {"prompt_tokens": -5, "completion_tokens": "9"}, None])
 def test_malformed_usage_never_lowers_spend(usage):

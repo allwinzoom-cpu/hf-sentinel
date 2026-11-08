@@ -60,6 +60,11 @@ class Ledger:
     cost_priced_usd: float = 0.0  # from the router's listed per-token price
     cost_estimated_usd: float = 0.0
     unpriced_successes: int = 0
+    # Cost to the FIRST confirmed attack success (LSCAN-030): a snapshot of the meter the moment the first hit landed.
+    # -1 until an attack hit is marked; this is the real attack-success cost, distinct from `successes` (completed calls).
+    first_success_requests: int = -1
+    first_success_usd: float = -1.0
+    first_success_tokens: int = -1
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @property
@@ -85,6 +90,15 @@ class Ledger:
         with self._lock:
             self.errors += 1
 
+    def mark_first_success(self) -> None:
+        """Record the meter at the first confirmed attack hit (LSCAN-030). Idempotent — only the first call takes; later
+        hits leave it unchanged, so this captures the cost of reaching the first success, not the last."""
+        with self._lock:
+            if self.first_success_requests < 0:
+                self.first_success_requests = self.requests
+                self.first_success_usd = round(self.spent_usd, 6)
+                self.first_success_tokens = self.prompt_tokens + self.completion_tokens
+
     def add_usage(self, usage: dict | None, price: tuple[float, float] | None = None) -> None:
         """Cost precedence: provider-reported `estimated_cost` → listed price (USD per 1M input/output tokens) →
         conservative estimate."""
@@ -107,8 +121,9 @@ class Ledger:
         with self._lock:
             return {k: getattr(self, k) for k in ("requests", "successes", "throttled", "errors", "prompt_tokens",
                                                    "completion_tokens", "cost_reported_usd", "cost_priced_usd",
-                                                   "cost_estimated_usd",
-                                                   "unpriced_successes")}
+                                                   "cost_estimated_usd", "unpriced_successes",
+                                                   "first_success_requests", "first_success_usd",
+                                                   "first_success_tokens")}
 
 
 def _int(v: object) -> int:

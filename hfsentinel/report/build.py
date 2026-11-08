@@ -248,6 +248,11 @@ def assemble(*, target: dict, plan_steps, runs: list[TechniqueRun], controls, co
                     "A category grade covers only the techniques run in it, not the whole category.")]
     if any(r.disposition == "stopped" for r in rows):
         limitations.append("A budget cap stopped the sweep; stopped techniques are not graded.")
+    if campaign is not None:  # LSCAN-030: budget-normalised accounting (ASR per query/token/time/spend + first-success)
+        from hfsentinel.scoring.budget import budget_report
+        elapsed = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
+        campaign["budgets"] = budget_report(ledger, confirmed_hits=len(findings), elapsed_s=elapsed,
+                                            judge_calls=int(campaign.get("judge_calls_made", 0)))
     body = Report(
         tool={"name": "HF-Sentinel", "version": __version__, "build": build},
         run={"run_id": run_id, "started_at": started.isoformat(timespec="seconds"),

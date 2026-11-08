@@ -285,6 +285,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-033 · Reproducibility-compatible evidence retention — new `engines/retention.py`: an unconfirmed finding keeps only the canonical request hash (nothing sensitive); a confirmed one keeps a redacted excerpt + the ordered replay script, and a full (encrypted) transcript only on explicit opt-in; `replay_level()` is derived from what was kept (payload-only/full-script/exact-transcript), an absent transcript is an explicit reproducibility limitation, and redaction can't change the canonical request. 3 tests green.
 
+- LSCAN-032 · Repeated-run / serving-path stability matrix — new `engines/stability.py`: per-cell reliability with **Wilson intervals** (uncertainty always shown), separates attack-**generation** determinism from stochastic **target** reliability, and `route_coverage_claim` states a replay confirmed on the tested route(s) is **not generalizable to all deployments** of the named model. 3 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

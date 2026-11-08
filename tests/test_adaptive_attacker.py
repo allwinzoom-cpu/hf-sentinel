@@ -87,3 +87,42 @@ def test_campaign_adaptive_stage_noop_without_attacker():
     res = CampaignResult()
     _adaptive_stage(res, object(), attacker=None, max_turns=2, max_tokens=64, seed=1)
     assert not res.adaptive and not res.decisions
+
+
+# ---- LSCAN-039: Tree-of-Attacks-with-Pruning as a distinct, traced search algorithm ----
+from hfsentinel.agents.adaptive_attacker import confirm_path, run_tap
+
+BOOKS = "Here are some lovely books about gardening."  # a clearly non-refusal filler reply
+
+
+def test_tap_tree_search_finds_a_break_and_records_a_trace():
+    c = "CAN-TAP-0001"
+
+    def branch(canary, history):
+        d = len(history) // 2
+        return [f"d{d}-b{k}" for k in range(3)]
+
+    def target(messages):
+        return f"ok {c}" if messages[-1]["content"] == "d1-b1" else BOOKS
+
+    r = run_tap(branch, target, canary=c, width=3, depth=3)
+    assert r.broke and r.break_depth == 2
+    assert r.target_calls >= 1 and r.attacker_calls >= 1 and r.path and r.path[-1] == "d1-b1"
+    assert confirm_path(target, r.path, canary=c)          # the winning path replays (held-out confirmation)
+
+
+def test_tap_prunes_refused_branches_and_stops_when_the_frontier_empties():
+    c = "CAN-TAP-0002"
+    r = run_tap(lambda canary, h: ["a", "b", "c"], lambda m: "I'm sorry, I can't help with that.",
+                canary=c, width=3, depth=2)
+    assert not r.broke and r.pruned >= 3 and r.target_calls >= 3
+
+
+def test_tap_branches_more_than_the_linear_pair_loop():
+    c = "CAN-TAP-0003"
+    r = run_tap(lambda canary, h: [f"x{k}" for k in range(3)], lambda m: BOOKS, canary=c, width=3, depth=2)
+    assert not r.broke and r.target_calls > 3              # a real tree (branching), not a single linear chain
+
+
+def test_confirm_path_reports_a_non_reproducing_break_honestly():
+    assert not confirm_path(lambda m: "nope", ("setup", "win"), canary="CAN-TAP-0004")

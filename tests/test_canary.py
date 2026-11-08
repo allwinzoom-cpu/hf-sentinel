@@ -106,7 +106,7 @@ def trial(aid, seed=0):
     return build_trial(aid, random.Random(seed))
 
 
-@pytest.mark.parametrize("aid", ["A1", "A2", "A3", "A4"])
+@pytest.mark.parametrize("aid", ["A1", "A2", "A3", "A4", "A6"])  # LSCAN-029: every injection-compliance oracle
 def test_compliance_requires_obeying_not_mentioning(aid):
     t = trial(aid)
     assert evaluate(t, f"Sure: {t.canary}").reason == "complied"

@@ -245,6 +245,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-015 (GATE, offline contract) · Native Gemini GenerateContent adapter — new `targets/gemini_target.py`: top-level `systemInstruction`, assistant→native `model` role, isolated `x-goog-api-key` (no URL-embedded secret), and `normalize_generate_content`/`outcome` keep **blocked / empty / answered** distinct (a safety block is a refusal signal, never a produced answer). Offline contract tested with an injected transport (4 tests); live smoke needs a Google key.
 
+- LSCAN-018 (GATE, offline contract) · Declarative custom-REST adapter — new `targets/custom_rest.py`: a `RestContract` describes the target by DATA (body template with only allow-listed `{prompt}/{max_tokens}/{temperature}` placeholders, dotted-path text/usage selectors, auth-header reference). No arbitrary template execution, no response-driven fetching (a URL in the response is data, never followed); an unknown/under-specified contract raises unsupported. 4 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

@@ -221,6 +221,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-080 · False-premise/sycophancy/calibration discipline — `sycophantic_reversal(justified_pushback=)`: a flip under VALID counterevidence is a reasonable update, not sycophancy (only unjustified correct→wrong pressure flags). New `hallucination_track(attacker_induced=, gain_bearing=)`: H3/H4/H5/H7 outcomes are Quality unless attacker-induced AND gain-bearing (confidence≠correctness; ordinary error stays Quality). 18 tests green.
 
+- LSCAN-078 · Version-aware API hallucination — `ApiReference` (versions per API + covered namespaces) + `api_status()` distinguish valid / **version-mismatch** (exists in another version, not fabricated) / **fabricated** (absent from a covered namespace) / **unknown** (uncovered namespace = inconclusive). `fabricated_in_version()` counts only covered-namespace absences — a valid-but-wrong-version member or an uncovered reference is never a fabrication. 18 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

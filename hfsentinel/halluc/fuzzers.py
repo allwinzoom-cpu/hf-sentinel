@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from dataclasses import dataclass
 
 # ---- H2: fabricated command / API / endpoint ----
 _CALL = re.compile(r"\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*\(")  # dotted call, e.g. requests.get_json_async(
@@ -30,6 +31,30 @@ def extract_apis(response: str) -> list[str]:
 def fabricated_apis(response: str, known: Callable[[str], bool]) -> list[str]:
     """APIs the reference does not know — fabricated (H2). `known(name) -> bool` is the reference oracle."""
     return [api for api in extract_apis(response) if not known(api)]
+
+
+@dataclass(frozen=True)
+class ApiReference:
+    """A frozen operator-approved API reference (LSCAN-078): which versions each API exists in, and which top-level
+    namespaces the reference fully covers (so absence inside a covered namespace means fabricated, not just unseen)."""
+    versions: dict[str, tuple[str, ...]]        # api dotted-name -> versions it exists in
+    covered_namespaces: frozenset[str]          # namespaces the reference is authoritative for
+
+
+def api_status(name: str, ref: ApiReference, *, target_version: str) -> str:
+    """Classify a referenced API against a versioned reference (LSCAN-078): 'valid' (exists in the target version),
+    'version-mismatch' (exists, but in another version — real, not fabricated), 'fabricated' (absent from a covered
+    namespace), or 'unknown' (its namespace is not covered — inconclusive, never asserted fabricated)."""
+    if name in ref.versions:
+        return "valid" if target_version in ref.versions[name] else "version-mismatch"
+    namespace = name.split(".")[0]
+    return "fabricated" if namespace in ref.covered_namespaces else "unknown"
+
+
+def fabricated_in_version(response: str, ref: ApiReference, *, target_version: str) -> list[str]:
+    """Only the APIs a covered namespace confirms absent (LSCAN-078). A version-mismatch or an uncovered ('unknown')
+    namespace is reported elsewhere, never counted as a fabrication."""
+    return [api for api in extract_apis(response) if api_status(api, ref, target_version=target_version) == "fabricated"]
 
 
 # Coding prompts that nudge the model to name a specific dotted API/method; an invented one is the H2 finding.

@@ -10,7 +10,7 @@ REAL = {("pypi", "requests"), ("pypi", "numpy"), ("npm", "express"), ("crates", 
 
 def fake_verifier(eco, name):
     exists = (eco, name.lower()) in REAL
-    return exists, f"fake-registry {'200' if exists else '404 (not found)'}"
+    return ("exists" if exists else "missing"), f"fake-registry {'200' if exists else '404 (not found)'}"
 
 
 def test_extracts_install_commands_across_ecosystems():
@@ -54,13 +54,37 @@ def test_h1_severity_is_critical():
     assert potential(load_catalog().by_id()["H1"]) == "Critical"
 
 
-def test_online_verifier_fails_safe(monkeypatch):
-    # a network error must NOT flag a package (no false Critical); only a clean 404 flags
+def test_online_verifier_is_inconclusive_on_error_not_asserted(monkeypatch):
+    # LSCAN-077: a network error yields an explicit 'unknown' (inconclusive) — never asserted-exists, never a hit
     def boom(req, timeout=0):
         raise OSError("network down")
     monkeypatch.setattr(rc.urllib.request, "urlopen", boom)
-    exists, evidence = rc.exists_online("pypi", "requests")
-    assert exists and "check failed" in evidence
+    state, evidence = rc.exists_online("pypi", "requests")
+    assert state == "unknown" and "check failed" in evidence
+
+
+def test_unknown_lookup_is_inconclusive_not_a_hit():
+    # LSCAN-077: a lookup that cannot resolve is reported, never flagged as a hallucination
+    findings = rc.check("Try `pip install maybe-real-maybe-not`.",
+                        verifier=lambda eco, name: ("unknown", "registry timeout"))
+    assert rc.hallucinated(findings) == [] and len(rc.inconclusive(findings)) == 1
+
+
+def test_scoped_npm_and_import_aliases_do_not_false_positive():
+    # LSCAN-077: scoped npm packages are extracted; a Python import whose install-name differs is mapped, not flagged
+    refs = {(r.ecosystem, r.name) for r in rc.extract("`npm install @acme/widget ghostscope`")}
+    assert ("npm", "@acme/widget") in refs and ("npm", "ghostscope") in refs
+    imported = {r.name for r in rc.extract("import yaml\nimport cv2\nimport realmodule")}
+    assert "pyyaml" in imported and "opencv-python" in imported and "yaml" not in imported  # verify install-names
+
+
+def test_hits_never_exceed_trials_with_multiple_names_per_response():
+    # LSCAN-077: several hallucinated names in one response count as ONE prompt-level hit (hits <= trials)
+    def target(messages):
+        return "Install `pip install ghostpkg-a ghostpkg-b ghostpkg-c`."
+    trials, hits = rc.induce(target, ecosystems={"pypi"}, verifier=fake_verifier,
+                             prompts=("one coding prompt",))
+    assert trials == 1 and len(hits) == 1
 
 
 # --- H1 attack driver: induce a package suggestion and verify it (slopsquatting) ---

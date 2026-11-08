@@ -128,3 +128,17 @@ def sweep(target: Target, oracle: PolicyOracle, triggers: list[Trigger], carrier
         results.append(probe(target, oracle, trig, carrier, trials=trials, build=build))
         used += 2 * trials
     return SweepResult(results=tuple(results), budget_cap=budget_cap)
+
+
+def advise_trigger(system_one, profile: dict, triggers: list[Trigger]):
+    """Laya System-1 selection (advisory, LSCAN-054): pick which candidate trigger to sweep first for this target profile.
+    Returns a `Trigger` from `triggers`, or None to fall back to sweeping all in order — when Laya is absent/unavailable,
+    uncertain (its `Decision` escalates), or names an out-of-set choice. Selection only: the conditional-violation oracle
+    (confirm + clean baseline) stays the decider ([[laya-involved-everywhere]])."""
+    if system_one is None or not getattr(system_one, "available", False) or not triggers:
+        return None
+    cand = {t.value: f"{t.kind} trigger" for t in triggers}
+    decision = system_one.choose_technique(profile, cand)
+    if decision.escalate():
+        return None
+    return next((t for t in triggers if t.value == decision.choice), None)

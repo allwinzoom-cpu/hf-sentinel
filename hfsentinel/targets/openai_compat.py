@@ -31,7 +31,9 @@ THROTTLE_STATUS = {429, 503}
 MAX_THROTTLE_RETRIES = 8
 DEFAULT_USER_AGENT = "hfsentinel/0.0.1"  # honest identification in authorized tests; override per engagement
 MAX_USER_AGENT = 200
-EXTRA_PARAMS = frozenset({"response_format", "tools", "tool_choice"})  # the only request fields callers may add
+# The request fields callers may add (LSCAN-022 feature negotiation): structured-output/tool fields plus the standard
+# generation controls a probe sends to test whether a target actually honours them. Unknown fields are still refused.
+EXTRA_PARAMS = frozenset({"response_format", "tools", "tool_choice", "seed", "stop", "top_p", "top_k", "logprobs"})
 MAX_TOOL_CALLS = 16
 MAX_BACKOFF_S = 30.0
 

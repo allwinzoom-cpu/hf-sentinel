@@ -219,6 +219,10 @@ def _print_plan(plan: Plan) -> None:
                f"{plan.count('blocked')} blocked · {plan.count('n/a')} n/a")
     typer.echo("recon     " + ("profile applied" if plan.recon else "not run — conditional attacks stay unverified "
                                                                        "(scan --dry-run --recon)"))
+    feats = getattr(plan.profile, "features", None) if plan.profile is not None else None
+    if feats:  # LSCAN-022: negotiated generation controls, classified by observed support
+        shown = ", ".join(f"{name}={info['state']}" for name, info in feats.items() if info.get("probed"))
+        typer.echo(f"features  {shown}" if shown else "features  none negotiated")
     typer.echo("engines   " + _engine_routing(plan))
     typer.echo("")
     typer.echo(f"{'#':>3} {'ID':<4} {'PLAN':<12} {'GAIN':>7} {'REQ':>4}  {'ATTACK':<44} WHY")
@@ -245,7 +249,7 @@ def _router_metadata(t: ResolvedTarget) -> tuple[dict, object | None]:
             prov.pricing)
 
 
-def _run_recon(t: ResolvedTarget, controls) -> TargetProfile:
+def _run_recon(t: ResolvedTarget, controls, *, negotiate_features: bool = False) -> TargetProfile:
     gov = Governor(Ledger(RECON_MAX_REQUESTS, RECON_BUDGET_USD, deadline=time.monotonic() + 300),
                    rate_limit_per_min=controls.target_io.rate_limit, concurrency=1)
     token = _optional_token()
@@ -258,7 +262,7 @@ def _run_recon(t: ResolvedTarget, controls) -> TargetProfile:
     if pricing:
         gov.set_price(target.rate_key, pricing.input, pricing.output)
     try:
-        profile = run_recon(target, declared)
+        profile = run_recon(target, declared, negotiate_features=negotiate_features)
     except BudgetExceeded:
         raise _fail("recon budget exhausted", EXIT_INPUT) from None
     led = gov.ledger.snapshot()
@@ -326,6 +330,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
                                                     "sentinel.yaml and exit; send nothing.")] = False,
          recon: Annotated[bool, typer.Option("--recon", help="With --dry-run: send the benign recon probe set "
                                              "(≤ 24 requests) and plan from the observed profile.")] = False,
+         features: Annotated[bool, typer.Option("--features", help="With --dry-run --recon: also negotiate the target's "
+                                                "generation controls (seed, stop, max_tokens, JSON) and report "
+                                                "verified/ignored/rejected/unknown support (LSCAN-022).")] = False,
          engines: Annotated[bool, typer.Option("--engines/--no-engines", help="Also run engine-owned techniques "
                                                "(catalog B via the engine images); needs Docker, so run outside "
                                                "the hardened container.")] = False,
@@ -449,7 +456,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
         except ScopeError as e:
             raise _fail(f"{e} (as resolved: {resolved.request_model}); no requests sent", EXIT_SCOPE) from None
     if dry_run:
-        profile = _run_recon(resolved, res.controls) if recon else None
+        profile = _run_recon(resolved, res.controls, negotiate_features=features) if recon else None
         _print_plan(build_plan(resolved, selected=selected_ids(res.controls), profile=profile,
                                controls=res.controls))
         typer.echo("")

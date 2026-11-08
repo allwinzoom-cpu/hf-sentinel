@@ -193,6 +193,21 @@ def plan_for(prof, flags=None):
     return {s.catalog_id: s for s in build_plan(TARGET, profile=prof, controls=c).steps}
 
 
+def test_plan_carries_profile_and_cli_prints_negotiated_features(capsys):
+    # LSCAN-022: the plan keeps the recon profile, and the dry-run print shows the negotiated controls by state.
+    from hfsentinel import cli
+    prof = profile()
+    prof.features = {"max_tokens": {"state": "verified", "probed": True},
+                     "seed": {"state": "ignored", "probed": True},
+                     "top_p": {"state": "unknown", "probed": False, "reason": "not negotiated in this build"}}
+    plan = build_plan(TARGET, profile=prof, controls=resolve_controls({"profile": "custom", "status": "all"}).controls)
+    assert plan.profile is prof
+    cli._print_plan(plan)
+    out = capsys.readouterr().out
+    assert "features  " in out and "max_tokens=verified" in out and "seed=ignored" in out
+    assert "top_p" not in out  # an unprobed control is never presented as a negotiated result
+
+
 def test_no_tools_no_structured_output_means_na_with_zero_requests():
     steps = plan_for(profile())
     # LSCAN-004: a plain-chat target (no tools, no cross-session memory, no structured output) shows every

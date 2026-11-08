@@ -76,6 +76,7 @@ class Plan:
     catalog_version: int
     steps: tuple[PlanStep, ...]
     recon: bool = False
+    profile: TargetProfile | None = None  # the recon profile this plan was built from (carries LSCAN-022 features)
 
     def count(self, disposition: str) -> int:
         return sum(s.disposition == disposition for s in self.steps)
@@ -175,4 +176,4 @@ def build_plan(target: ResolvedTarget, catalog: Catalog | None = None, selected:
                                  mutators))
     runnable.sort(key=lambda s: (s.disposition != "run", -s.score))  # stable sort: catalog order breaks ties
     held.sort(key=lambda s: HELD_ORDER[s.disposition])
-    return Plan(target, catalog.catalog_version, tuple(runnable + held), recon=profile is not None)
+    return Plan(target, catalog.catalog_version, tuple(runnable + held), recon=profile is not None, profile=profile)

@@ -157,3 +157,20 @@ def controls_valid(oracle: Oracle, *, identity_ids: tuple[str, ...], payload_ids
     payload = set(payload_ids)
     no_payload = tuple(i for i in all_ids if i not in payload)
     return oracle(no_payload) is not True                 # payload-removed must fail for the payload to be the cause
+
+
+def advise_ablation_first(system_one, profile: dict, components: tuple[Component, ...]) -> str | None:
+    """Laya System-1 selection (advisory, LSCAN-031): among the REMOVABLE components, pick which to try ablating FIRST (the
+    one most likely to be a non-causal rider), so a 1-minimal recipe is reached in fewer oracle calls. Returns a removable
+    component id, or None to keep the default order — when Laya is absent/unavailable, uncertain (its `Decision`
+    escalates), or names an out-of-set choice. Advisory only: the ablation oracle + controls stay the decider, and the
+    order never changes which components are found necessary ([[laya-involved-everywhere]])."""
+    if system_one is None or not getattr(system_one, "available", False):
+        return None
+    removable = {c.id: c.kind for c in components if not c.required}
+    if not removable:
+        return None
+    decision = system_one.choose_technique(profile, removable)
+    if decision.escalate():
+        return None
+    return decision.choice if decision.choice in removable else None

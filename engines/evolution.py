@@ -89,3 +89,19 @@ def transfer_result(*, with_library: float, no_learning: float, budget_matched: 
     if with_library > no_learning:
         return f"proven: library transfer improved the held-out metric ({no_learning:.2f} -> {with_library:.2f})"
     return f"unproven: no improvement over the no-learning baseline ({with_library:.2f} vs {no_learning:.2f})"
+
+
+def advise_operator(system_one, profile: dict, *, operators: tuple[str, ...] = MUTATION_OPERATORS) -> str | None:
+    """Laya System-1 selection (advisory, LSCAN-042): pick which mutation operator to apply next for this target profile.
+    Returns an operator from `operators`, or None to fall back to the default — when Laya is absent/unavailable, uncertain
+    (its `Decision` escalates), or names an out-of-set choice. The UCB1 `select_template` seed selection remains the
+    decider; this only biases operator choice ([[laya-involved-everywhere]])."""
+    if system_one is None or not getattr(system_one, "available", False):
+        return None
+    cand = {op: op for op in operators}
+    if not cand:
+        return None
+    decision = system_one.choose_technique(profile, cand)
+    if decision.escalate():
+        return None
+    return decision.choice if decision.choice in cand else None

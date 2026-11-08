@@ -15,6 +15,13 @@ def test_threshold_calibrates_to_the_prespecified_fpr_on_nonmembers():
         mi.threshold_at_fpr(nonmembers, 1.5)
 
 
+def test_fpr_k_is_not_truncated_by_float_error():
+    # 0.29 * 100 == 28.9999... in float; the threshold must admit floor(29) == 29 nonmembers, not 28.
+    scores = [float(i) for i in range(100)]
+    thr = mi.threshold_at_fpr(scores, 0.29)
+    assert sum(1 for s in scores if s >= thr) == 29
+
+
 def test_a_separating_method_reads_above_chance_with_uncertainty():
     scored = [mi.Scored(0.9, True)] * 20 + [mi.Scored(0.1, False)] * 20   # cleanly separable
     res = mi.evaluate("logprob", scored, fpr_target=0.1, holdout_split="80/20 temporal")

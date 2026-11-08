@@ -69,11 +69,12 @@ def _bridge(payload: dict) -> dict:
         raise ObfuscationError(f"obfuscation engine runtime not available: {e}") from e
     except subprocess.SubprocessError as e:
         raise ObfuscationError(f"obfuscation engine error: {e}") from e
-    if not proc.stdout.strip():
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]   # ignore trailing/blank lines the engine may emit
+    if not lines:
         raise ObfuscationError(proc.stderr.strip() or "obfuscation engine produced no output")
     try:
-        result = json.loads(proc.stdout.splitlines()[-1])
-    except (ValueError, IndexError) as e:
+        result = json.loads(lines[-1])
+    except ValueError as e:
         raise ObfuscationError("obfuscation engine returned invalid JSON") from e
     if not result.get("ok"):
         raise ObfuscationError(result.get("error", "obfuscation engine error"))

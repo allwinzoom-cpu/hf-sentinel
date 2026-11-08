@@ -233,6 +233,28 @@ def test_s4_escalation_bypasses_a_filter_that_breadth_misses():
         srv.shutdown()
 
 
+def test_s4_scores_on_held_out_confirmation_not_selection_trials():
+    # LSCAN-027: a mutator SELECTED by the search must be confirmed on independent held-out trials; the finding's
+    # reported rate comes from that confirmation (full `trials`), never the smaller selection batch (ESCALATE_TRIALS).
+    from hfsentinel.engines.campaign import ESCALATE_TRIALS
+    from hfsentinel.engines.recon import Fact, TargetProfile
+    srv, base = vuln_target.serve(defended=True, seed=30)
+    try:
+        plan, controls = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 10)
+        profile = TargetProfile(facts={"keyword_filter": Fact(True, "refused_3_of_3")}, refusal_style="templated")
+        gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=4)
+        res = run_campaign(_target(base), gov, plan, trials=10, temperature=0.7, max_tokens=64, concurrency=4,
+                           seed=30, profile=profile, controls=controls)
+        a1_esc = [e for e in res.escalations if e["id"] == "A1"]
+        assert any(e["phase"] == "search" for e in a1_esc)                 # a discovery phase ran
+        confs = [e for e in a1_esc if e["phase"] == "held-out-confirm" and e["confirmed"]]
+        assert confs, "a discovered mutator must be confirmed on held-out trials"
+        a1 = next(r for r in res.runs if r.catalog_id == "A1")
+        assert a1.trials > ESCALATE_TRIALS and a1.trials == confs[0]["trials"]  # scored on held-out, not the search batch
+    finally:
+        srv.shutdown()
+
+
 def test_s4_skipped_without_a_filter():
     srv, base = vuln_target.serve(profile="control", seed=31)  # undefended, nothing fires
     try:

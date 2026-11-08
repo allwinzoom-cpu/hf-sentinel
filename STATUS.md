@@ -255,6 +255,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-017 (GATE, offline contract) · Bedrock Converse adapter — new `targets/bedrock_target.py`: **per-model API-compatibility** check (`api_compatibility`: Converse-capable vs InvokeModel-only — never a universal URL), a **pluggable SigV4 signer** abstraction (D-019, no vendored SDK; required for a live call), native `normalize_converse` (text/toolUse/stopReason/usage), and region/inference-profile recorded in repro. 3 tests green.
 
+- LSCAN-045 (GATE core) · Prefill applicability — new `attacks/prefill.py`: a prefill attack applies only when the provider accepts a caller-supplied assistant prefix AND the declared attacker controls that channel; an attacker with only user text → N/A, a provider that rejects prefill → N/A, never a success; `is_success` requires applicable + independently-confirmed goal. 2 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

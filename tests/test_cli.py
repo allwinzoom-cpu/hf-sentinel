@@ -68,6 +68,16 @@ def test_resolve_prints_plan():
     assert_no_upstream(out)
 
 
+def test_resolve_plan_shows_real_engine_routing():
+    # task 599/600: the plan print now reports which capability owner handles each scored technique (from
+    # engines/capabilities.json), not the old "routing not yet assigned" placeholder — and never leaks a tool name.
+    out = run("resolve", TARGET).output
+    m = re.search(r"^engines\s+(.+)$", out, re.MULTILINE)
+    assert m and "routing not yet assigned" not in out
+    assert "built-by-us" in m[1] and "unassigned" not in m[1]  # every scored native ID has a real owner
+    assert_no_upstream(out)
+
+
 def test_resolve_openai_loopback_target():
     res = run("resolve", "openai+http://127.0.0.1:8765/v1#hfsentinel/vuln-target-v0")
     assert res.exit_code == cli.EXIT_OK and "kind      openai" in res.output

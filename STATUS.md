@@ -173,6 +173,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-013 · Protocol-normalization contract wired into the live OpenAI-compatible adapter — `ChatResult.refusal` is now sourced from `protocols.normalize('chat-completions', ...)`, so a provider `content_filter` stop is an explicit refusal (not ambiguous empty text) and the adapter can never drift from the normalizer. New consistency test; test_targets 44/44 (live) + 116 consumer tests green.
 
+- P1 · Coverage-matrix routing wired into the CLI — `coverage_matrix.routing()` groups the plan's scored techniques by capability owner; `scan`/`resolve` plan print reports real engine routing instead of the stale placeholder. New `test_resolve_plan_shows_real_engine_routing`; test_cli + test_capabilities 59/59 green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).
@@ -182,7 +184,7 @@ build → verify in Linux containers (D-009) → tick + log here.
 - Owner decision: drop CodeShield from E2 (recommended) — semgrep rule-parse failure.
 - Working order (owner, D-020): ~~rate governor~~ → ~~recon + planner~~ → ~~scope enforcement~~ → ~~canary harness~~ → ~~per-trial canaries~~ → ~~Category E~~ → ~~judges~~ + ~~judge hardening~~ → ~~scoring/report~~ → ~~vulnerable model zoo~~ (rate-profiled test target, D-023) → ~~campaign v1~~ → **Laya**. Zoo GPU use capped at 30 ZeroGPU-min/day, never credits; HF token never stored in a Space.
 - Owner review: D-019 (stdlib adapters instead of vendor SDKs).
-- Paused: P1 Coverage matrix — inventories in `engines/inventory/*.json`; capability ownership (`engines/capabilities.json`) + test + `coverage.md` still to do (CLI plan shows "engine routing not yet assigned" until then).
+- **Done: P1 Coverage matrix** — capability ownership (`engines/capabilities.json`, one owner per capability), inventories (`engines/inventory/*.json`), the enforcement test (`tests/test_capabilities.py`, 8/8), and the generated `docs/coverage.md` (`engines/coverage_matrix.py`) are all in place and drift-guarded. The CLI plan print now shows **real per-owner engine routing** read from the matrix (no more "routing not yet assigned"); owner aliases only, honouring D-014.
 - Carried gaps: sandbox egress proxy blocks garak's reachability pre-check for the *internal* vuln-target (NO_PROXY not honoured there) — external targets unaffected; SDK-default User-Agents reach targets from two engines (16.16); arm64 engine images predate baked-in adapters; owner actions: judge CLI login tokens / API keys (D-017), 2nd definitions reviewer, calibration annotators, GitHub remote.
 
 ## Built — awaiting human acceptance

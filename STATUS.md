@@ -267,6 +267,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-056 (GATE foundation) · Multimodal asset-replay foundation — new `targets/assets.py`: a typed `MediaAsset` (image/audio/video/document) with a content hash for exact replay, modality-availability (unsupported modality → N/A, never pass/fail), size outcome (over-limit → unsupported, distinct from refusal), hash-pinned `replayable()`, and scope-bound opaque handles (never fetched/reused across scopes). 4 tests green; actual media probing still needs infra.
 
+- LSCAN-057 (GATE core) · Image/OCR instruction discipline — new `attacks/image_eval.py`: image-text following is an instruction-following **surrogate** (delivery, never harm); a benign **OCR comprehension control** gates applicability (unreadable image → inconclusive, never 'defended'); the decoded goal is judged independently; `is_success` requires readable channel + followed + confirmed goal. 3 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

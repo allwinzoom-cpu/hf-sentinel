@@ -28,14 +28,32 @@ class ProvenCase(BaseModel):
 
 
 class Repro(BaseModel):
-    """Minimal recipe to replay a confirmed finding deterministically (plan 16.17): catalog id + target pin live on the
-    Finding; this adds the seeded run parameters and the mutator chain, so the exact trials regenerate."""
+    """Versioned recipe to replay a confirmed finding (plan 16.17 / LSCAN-024). Catalog id + target pin live on the
+    Finding; this carries everything else needed to regenerate the exact trials and to know whether a later replay is
+    still an *exact* reproduction: the seeded run parameters, the full resolved generation settings, the ordered mutator
+    chain, who owned the system instruction, the served-route pin (so a drifted route is caught — LSCAN-009), and the
+    dependency revisions (so changing one is an explicit replay incompatibility rather than a silent mismatch)."""
     model_config = ConfigDict(extra="forbid", frozen=True)
     catalog_id: str = Field(pattern=r"^[ABCDEH]\d{1,2}$")
     seed: int = Field(ge=0)
     trials: int = Field(ge=1)
     temperature: float = Field(ge=0)
+    max_tokens: int = Field(default=256, ge=1)  # part of the exact resolved generation settings (LSCAN-024)
     mutator_chain: list[str] = Field(default_factory=list)
+    # Who authored the system instruction: the scanner ("harness"), the target deployment ("target"), or none. A
+    # harness-authored prompt is never an extraction of the provider's actual hidden prompt (LSCAN-004).
+    system_instruction_owner: Literal["harness", "target", "none"] = "harness"
+    replayable: Literal["exact", "recipe-only"] = "exact"  # deterministic recipe vs. recipe-only (stochastic/judge)
+    replay_note: str = Field(default="", max_length=200)  # why, when recipe-only
+    route: dict = Field(default_factory=dict)  # served-path pin (LSCAN-009): provider/model/endpoint/served revision
+    versions: dict = Field(default_factory=dict)  # dependency revisions; any drift => replay incompatibility (LSCAN-024)
+
+
+def replay_compatibility(repro: Repro, env: dict) -> list[str]:
+    """Dependency keys whose current value differs from the pinned manifest (LSCAN-024). An empty list means an exact
+    replay is valid; any returned key means the replay is incompatible and must be reported as a comparative rerun, not
+    an exact reproduction. Keys missing from `env` are unknown and reported (fail-closed)."""
+    return [key for key, pinned in sorted(repro.versions.items()) if env.get(key) != pinned]
 
 
 class TechniqueResult(BaseModel):

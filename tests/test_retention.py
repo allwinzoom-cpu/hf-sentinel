@@ -80,8 +80,16 @@ def test_confirmed_finding_replays_from_its_recipe():
     try:
         _, report, _ = _run(base, 8)
         finding = next(f for f in report.findings if f.repro is not None)
+        # LSCAN-024: the recipe is a complete versioned manifest — exact generation settings + dependency pins.
+        repro = finding.repro
+        assert repro.max_tokens >= 1 and repro.replayable == "exact"
+        assert repro.system_instruction_owner == "harness"
+        assert {"catalog_version", "schema", "tool_build"} <= set(repro.versions)
+        from hfsentinel.report.schema import replay_compatibility
+        assert replay_compatibility(repro, dict(repro.versions)) == []            # same env -> exact replay valid
+        assert replay_compatibility(repro, {**repro.versions, "schema": "9.9"}) == ["schema"]  # drift is flagged
         # Re-run the single technique from its recipe against the same target; the native oracle must fire again.
-        run = replay(finding.repro, _target(base))
+        run = replay(repro, _target(base))
         assert run.catalog_id == finding.catalog_id
         assert run.hits >= 1, f"{finding.catalog_id} did not reproduce from its recipe"
     finally:

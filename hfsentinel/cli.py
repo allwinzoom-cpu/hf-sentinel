@@ -188,6 +188,21 @@ def _resolve(uri: str, via: Via):
         raise _fail(str(e), EXIT_HUB) from None
 
 
+def _engine_routing(plan: Plan) -> str:
+    """One-line engine-routing summary for the plan: which capability owner handles each scored technique, read from
+    engines/capabilities.json (plan 16.21 / task 599). Best-effort — the capability matrix lives in the engines/ tooling
+    tree, which may be absent in a slim runtime; owner aliases (not upstream tool names) are shown, honouring D-014."""
+    ids = [s.catalog_id for s in plan.steps if s.disposition in ("run", "experimental")]
+    if not ids:
+        return "no scored techniques selected"
+    try:
+        from engines import coverage_matrix as cm
+        groups = cm.routing(cm.load_caps(), ids)
+    except Exception:  # noqa: BLE001 — the capability matrix tree is not present in this build
+        return "routing map unavailable in this build"
+    return " · ".join(f"{owner} ({len(cids)}): {', '.join(cids)}" for owner, cids in groups)
+
+
 def _print_plan(plan: Plan) -> None:
     t = plan.target
     typer.echo("HF-Sentinel attack plan (no requests sent to the target)")
@@ -204,7 +219,7 @@ def _print_plan(plan: Plan) -> None:
                f"{plan.count('blocked')} blocked · {plan.count('n/a')} n/a")
     typer.echo("recon     " + ("profile applied" if plan.recon else "not run — conditional attacks stay unverified "
                                                                        "(scan --dry-run --recon)"))
-    typer.echo("engines   routing not yet assigned in this build")
+    typer.echo("engines   " + _engine_routing(plan))
     typer.echo("")
     typer.echo(f"{'#':>3} {'ID':<4} {'PLAN':<12} {'GAIN':>7} {'REQ':>4}  {'ATTACK':<44} WHY")
     for i, s in enumerate(plan.steps, 1):

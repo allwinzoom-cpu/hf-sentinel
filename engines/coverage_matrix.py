@@ -71,6 +71,16 @@ def gaps(caps: dict | None = None) -> list[dict]:
     return out
 
 
+def routing(caps: dict, ids: list[str]) -> list[tuple[str, list[str]]]:
+    """Group the given catalog IDs by their capability owner (plan 16.21 / task 599), most-covered owner first. IDs with
+    no owner in the matrix are grouped under 'unassigned'. Used by the CLI plan print to show real engine routing."""
+    owned = id_to_capability(caps)
+    groups: dict[str, list[str]] = {}
+    for cid in ids:
+        groups.setdefault(owned.get(cid, {}).get("owner", "unassigned"), []).append(cid)
+    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+
 def inventory_gaps(caps: dict | None = None) -> list[str]:
     """Engine-owned capabilities must cite inventory entries present in engines/inventory/<alias>.json."""
     caps = caps or load_caps()

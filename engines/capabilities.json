@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "Capability ownership (plan 16.21 / task 599). Each capability has exactly ONE owner, chosen on Phase-1 evidence (docs/scorecards/assessments/*.json: ground-truth hit rate on the vuln target, real-endpoint reach, cost, failure modes). Other engines that offer it are listed as `fallbacks` only. Every catalog ID appears in exactly one capability's `catalog_ids`; its run-state is in `status`. Engine-owned capabilities cite `inventory` entries that must exist in engines/inventory/<alias>.json (installed-version proof). Generated view: docs/coverage.md (engines/coverage.py).",
+  "note": "Capability ownership (plan 16.21 / task 599). Each capability has exactly ONE owner, chosen on Phase-1 evidence (docs/scorecards/assessments/*.json: ground-truth hit rate on the vuln target, real-endpoint reach, cost, failure modes). Other engines that offer it are listed as `fallbacks` only. Every catalog ID appears in exactly one capability's `catalog_ids`; its run-state is in `status`. Engine-owned capabilities cite `inventory` entries that must exist in engines/inventory/<alias>.json (installed-version proof). Generated view: docs/coverage.md (engines/coverage_matrix.py).",
   "owners": {
     "built-by-us": "HF-Sentinel core (hfsentinel/*)",
     "probe-suite": "garak 0.17.1 — static probe breadth + deterministic detectors",

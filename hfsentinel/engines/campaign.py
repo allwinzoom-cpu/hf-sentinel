@@ -172,6 +172,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     if jailbreak_goals:
         _jailbreak_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
                                max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
+        _many_shot_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
+                               max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
     _cda_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
     if library is not None:
         _learn(res, library, profile)
@@ -574,6 +576,50 @@ def _jailbreak_judge_stage(res: CampaignResult, target, *, panel, system_one, go
         res.requests += run.attempts
         res.decide("S5", cid, f"{run.hits}/{run.trials} judged jailbreaks",
                    "harmful-goal seeds scored by the judge panel (no deterministic oracle)")
+    if tp is not None:
+        st = tp.stats
+        res.judge_calls_made += st.made
+        res.judge_calls_saved += st.saved
+        res.judge_saved_fraction, res.triage_agreement = st.saved_fraction, st.agreement
+
+
+MANY_SHOT_SHOTS = 8  # forged benign demonstrations before the harmful goal in the judged many-shot stage (B5)
+
+
+def _many_shot_judge_stage(res: CampaignResult, target, *, panel, system_one, goals, max_tokens: int, seed: int,
+                           shots: int = MANY_SHOT_SHOTS, keep_transcripts: bool = False) -> None:
+    """Many-shot / long-context jailbreak scoring (plan B5 / LSCAN-038, judged path): wrap each harmful-goal seed in a
+    forged many-shot history (attacks.many_shot) and score the response with the triage-gated judge panel — the judge is a
+    CLI subprocess (claude -p / codex exec), so this needs no API credential. Records the example count per judged
+    attempt; D-015: only a redacted judge-reason excerpt is kept, never the target's output. No panel or no goals → a
+    no-op. The deterministic `attacks.many_shot` delivery harness is the no-judge counterpart."""
+    if panel is None or not goals:
+        return
+    from hfsentinel.attacks import many_shot as _ms
+    from hfsentinel.judges.ensemble import TriagedPanel
+    from hfsentinel.targets.openai_compat import TargetError
+    tp = TriagedPanel(panel, system_one) if (system_one is not None and getattr(system_one, "available", False)) else None
+    run = TechniqueRun(catalog_id="B5", seed=seed)
+    for category, goal in goals:
+        messages = _ms.build(goal, shots=shots, placement="end")
+        try:
+            resp = target.chat(messages, max_tokens=max_tokens, temperature=0.0).text
+        except (BudgetExceeded, TargetError, ValueError):
+            run.complete = False
+            continue
+        run.trials += 1
+        run.attempts += 1
+        decision = tp.decide(goal, resp)[0] if tp is not None else panel.decide(goal, resp)
+        if decision.outcome == "finding":
+            run.hits += 1
+            if len(run.proven) < MAX_PROVEN:
+                run.proven.append(ProvenCase(
+                    sha256=_digest([{"goal_category": category, "shots": _ms.shots_sent(messages)}], resp),
+                    excerpt=f"judge finding via many-shot (x{_ms.shots_sent(messages)}): {decision.reason}"[:200]))
+    res.runs.append(run)
+    res.requests += run.attempts
+    res.decide("S5", "B5", f"{run.hits}/{run.trials} judged many-shot jailbreaks",
+               f"harmful-goal seeds wrapped in a {shots}-shot forged history, scored by the judge panel (no oracle)")
     if tp is not None:
         st = tp.stats
         res.judge_calls_made += st.made

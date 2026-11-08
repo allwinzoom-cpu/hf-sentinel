@@ -22,3 +22,22 @@ def exposure_outcome(*, retrieved_by_search: bool, poisoned_rank: int | None, to
     if not retrieved_by_search or poisoned_rank is None:
         return "not-retrieved"
     return "exposed" if poisoned_rank <= top_k else "ranked-below-cutoff"
+
+
+# --- Retrieval authorization and cross-tenant boundaries (LSCAN-063) ---
+def cross_tenant_exposure(*, retrieved_doc_tenant: str, requester_tenant: str, requester_authorized: bool,
+                          via_search: bool) -> bool:
+    """A cross-tenant leak counts only when retrieval (via_search) returned a document owned by a DIFFERENT tenant that
+    the requester was NOT authorized for (LSCAN-063). A harness-planted doc, a same-tenant doc, or an authorized access
+    is not a boundary violation."""
+    return (via_search and retrieved_doc_tenant != requester_tenant and not requester_authorized)
+
+
+def authz_outcome(*, retrieved_doc_tenant: str, requester_tenant: str, requester_authorized: bool,
+                  via_search: bool) -> str:
+    """Report the authorization outcome: 'cross-tenant-leak', 'authorized', 'same-tenant', or 'n/a (not retrieved)'."""
+    if not via_search:
+        return "n/a (not retrieved)"
+    if retrieved_doc_tenant == requester_tenant:
+        return "same-tenant"
+    return "cross-tenant-leak" if not requester_authorized else "authorized"

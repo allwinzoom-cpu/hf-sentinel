@@ -72,6 +72,10 @@ class EscalationResult:
     canary_match: str | None        # how the canary appeared (exact / reformatted / base64 / url-encoded)
     turns: list[Turn] = field(default_factory=list)
     transcript: list[dict] = field(default_factory=list, repr=False)  # retained only on a confirmed break (D-015)
+    # Replay script (LSCAN-040): the canary + ordered move names are everything needed to regenerate the exact attacker
+    # turns; the assistant replies are the live target's and are not part of the deterministic script.
+    canary: str = ""
+    moves: tuple[str, ...] = ()
 
 
 def escalate_conversation(target: Target, *, canary: str | None = None, max_turns: int | None = None,
@@ -85,7 +89,7 @@ def escalate_conversation(target: Target, *, canary: str | None = None, max_turn
     objective = _objective(canary)
     rungs = ladder[:max_turns] if max_turns is not None else ladder
     messages: list[dict] = []
-    result = EscalationResult(broken=False, break_turn=None, move=None, canary_match=None)
+    result = EscalationResult(broken=False, break_turn=None, move=None, canary_match=None, canary=canary)
     for i, (move, build) in enumerate(rungs, 1):
         messages = [*messages, {"role": "user", "content": build(objective)}]
         reply = target(messages)
@@ -95,6 +99,37 @@ def escalate_conversation(target: Target, *, canary: str | None = None, max_turn
         if system_one is not None and match is None:
             triage = system_one.triage(objective, reply).choice     # advisory only; never confirms a break
         result.turns.append(Turn(index=i, move=move, refused=match is None, triage=triage))
+        if match is not None:
+            result.broken, result.break_turn, result.move, result.canary_match = True, i, move, match
+            result.transcript = messages
+            break
+    result.moves = tuple(t.move for t in result.turns)  # the attacker-turn script, in order (LSCAN-040 replay)
+    return result
+
+
+_BUILDERS: dict[str, Callable[[str], str]] = dict(LADDER)
+
+
+def replay_escalation(target: Target, *, canary: str, moves: tuple[str, ...], oracle: Oracle = _default_oracle,
+                      ladder: tuple = LADDER) -> EscalationResult:
+    """Faithfully replay a recorded multi-turn attack (LSCAN-040): regenerate the EXACT attacker turns from the canary
+    and the ordered move script, re-send them with the running history, and report whether the break reproduces. Only
+    the attacker-controlled turns are restored deterministically — the assistant replies come from the live target — so a
+    break that does not recur is reported honestly, never assumed. Raises on a move not in the ladder."""
+    builders = {name: build for name, build in ladder} or _BUILDERS
+    objective = _objective(canary)
+    messages: list[dict] = []
+    result = EscalationResult(broken=False, break_turn=None, move=None, canary_match=None, canary=canary,
+                             moves=tuple(moves))
+    for i, move in enumerate(moves, 1):
+        build = builders.get(move)
+        if build is None:
+            raise ValueError(f"unknown escalation move: {move!r}")
+        messages = [*messages, {"role": "user", "content": build(objective)}]
+        reply = target(messages)
+        messages = [*messages, {"role": "assistant", "content": reply}]
+        match = oracle(reply, canary)
+        result.turns.append(Turn(index=i, move=move, refused=match is None))
         if match is not None:
             result.broken, result.break_turn, result.move, result.canary_match = True, i, move, match
             result.transcript = messages

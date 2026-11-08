@@ -87,3 +87,34 @@ def test_breaks_the_real_defended_vuln_target_end_to_end():
     r = mt.escalate_conversation(target)
     assert r.broken and r.move == "encoded"                  # gradual break against the real target
     assert [t.refused for t in r.turns] == [True, True, True, False]
+
+def test_replay_restores_exact_attacker_turns_and_reproduces_the_break():
+    # LSCAN-040: a confirmed break replays from its recorded script (canary + ordered moves), regenerating the exact
+    # attacker turns; the defended target breaks on the encoded rung.
+    c = "CAN-AAAA-BBBB"
+    r = mt.escalate_conversation(defended, canary=c)
+    assert r.broken and r.break_turn == 4 and r.canary == c
+    assert r.moves == ("direct", "roleplay", "authority", "encoded")
+    captured = []
+
+    def target(messages):
+        captured.append(messages[-1]["content"])
+        return defended(messages)
+
+    r2 = mt.replay_escalation(target, canary=r.canary, moves=r.moves)
+    assert r2.broken and r2.break_turn == 4
+    orig_user = [m["content"] for m in r.transcript if m["role"] == "user"]
+    assert captured == orig_user and len(captured) == 4   # every attacker turn restored byte-identically
+
+
+def test_replay_reports_a_non_reproducing_break_honestly():
+    # the recorded script no longer breaks a now-refusing target: reported as not broken, never assumed.
+    r2 = mt.replay_escalation(always_refuse, canary="CAN-AAAA-BBBB",
+                              moves=("direct", "roleplay", "authority", "encoded"))
+    assert not r2.broken and r2.break_turn is None and all(t.refused for t in r2.turns)
+
+
+def test_replay_rejects_an_unknown_move():
+    import pytest
+    with pytest.raises(ValueError, match="unknown escalation move"):
+        mt.replay_escalation(always_refuse, canary="X", moves=("direct", "bogus"))

@@ -89,6 +89,14 @@ def test_campaign_report_records_the_log():
                           started=dt.datetime(2026, 11, 4, tzinfo=dt.timezone.utc))
         from hfsentinel.report import render
         assert report.campaign["requests_saved"] >= 0
+        # LSCAN-030: the report carries budget-normalised accounting; a high-profile run reaches a first success, so the
+        # first-success hook fired (the exact cost math is pinned by test_budget/test_governor; this harness's target is
+        # not wired to this ledger, so the metered counts read 0 here).
+        b = report.campaign["budgets"]
+        assert b["paid_attempts"] == gov.ledger.snapshot()["requests"]
+        assert set(b["asr_per_budget"]) == {"per_query", "per_1k_tokens", "per_usd", "per_minute"}
+        assert b["first_success_cost"] is not None and set(b["calls_by_role"]) == {"target", "judge", "attacker",
+                                                                                   "translator"}
         md = render.to_markdown(report)
         assert "## Campaign" in md and "exhaustive" in md
         import json

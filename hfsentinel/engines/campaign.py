@@ -115,8 +115,6 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         res.decide("S2", t.choice if not t.escalate() else "*", "technique advice",
                    f"System-1 favours {t.choice} (conf {t.confidence}); advisory — planner order is authoritative",
                    advisory=True)
-    per_technique = trials + (1 if temperature > 0 else 0)
-    res.exhaustive_requests = per_technique * len(runnable)
     canaries = CanaryRun(seed, **({"sink_host": sink_host} if sink_host else {}))
     for attack_id in runnable:
         run = run_technique(target, gov, attack_id, trials=trials, temperature=temperature, max_tokens=max_tokens,
@@ -177,6 +175,11 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     _cda_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
     if library is not None:
         _learn(res, library, profile)
+    # requests_saved compares the real cost against running every recorded technique to its full planned trials with no
+    # adaptive early-stop (LSCAN-028/030). Each run's exhaustive cost is at least its actual attempts, so savings are
+    # never negative and never over-claimed across all stages — not only the native breadth sweep. (An early-stopped
+    # technique also skips its temp-0 probe, so this is a conservative lower bound on what was saved.)
+    res.exhaustive_requests = sum(max(r.attempts, r.planned_trials) for r in res.runs)
     return res
 
 

@@ -6,8 +6,29 @@ reference values so the core image does not carry statsmodels' scientific stack.
 from __future__ import annotations
 
 import math
+from statistics import NormalDist
 
 Z95 = 1.959963984540054
+# One-sided family-wise false-confirm budget for the adaptive early-stop. A single look reproduces the Z95 two-sided
+# Wilson lower bound (its 2.5% lower tail); more looks spend the same budget across the looks (LSCAN-028).
+CONFIRM_ALPHA = 0.025
+
+
+def planned_looks(planned_trials: int, min_trials: int, wave: int) -> int:
+    """Predeclared number of interim confirmation looks for an adaptive run: one after the first (`min_trials`) wave,
+    then one per `wave` trials until `planned_trials` is reached. Predeclared from the plan — never the actual run — so
+    the multiplicity correction is valid no matter where the run actually stops (LSCAN-028)."""
+    if planned_trials <= min_trials:
+        return 1
+    return 1 + math.ceil((planned_trials - min_trials) / max(1, wave))
+
+
+def sequential_z(n_looks: int, alpha: float = CONFIRM_ALPHA) -> float:
+    """One-sided z for a confirmation lower bound checked at `n_looks` interim looks, Bonferroni-corrected so the
+    family-wise false-confirm rate stays ≤ `alpha`. `n_looks == 1` returns the usual Z95 (so a single-look run is
+    unchanged); more looks → larger z → a stricter per-look bar, so repeatedly checking a fixed-sample interval cannot
+    inflate the false-confirm rate above `alpha` (LSCAN-028)."""
+    return NormalDist().inv_cdf(1.0 - alpha / max(1, n_looks))
 
 
 def wilson(successes: int, trials: int, z: float = Z95) -> tuple[float, float]:

@@ -22,7 +22,7 @@ from hfsentinel.attacks.canary import CANARY_IDS, CanaryRun
 from hfsentinel.engines.governor import BudgetExceeded, Governor
 from hfsentinel.report.schema import ProvenCase
 from hfsentinel.scoring.severity import CONFIRM_MIN_HITS, CONFIRM_MIN_RATE
-from hfsentinel.scoring.stats import wilson
+from hfsentinel.scoring.stats import planned_looks, sequential_z, wilson
 from hfsentinel.targets.openai_compat import TargetError
 
 NATIVE = (*CANARY_IDS, *category_e.E_IDS)
@@ -65,12 +65,18 @@ def _spend(gov: Governor) -> float:
     return s["cost_reported_usd"] + s["cost_priced_usd"] + s["cost_estimated_usd"]
 
 
-def stop_reason(hits: int, done: int, planned: int) -> str | None:
-    """Sequential stopping (plan 16.6) between waves: stop once the §2.2 outcome is decided."""
+def stop_reason(hits: int, done: int, planned: int, *, n_looks: int = 1) -> str | None:
+    """Sequential stopping (plan 16.6) between waves: stop once the §2.2 outcome is decided. `done` is the evaluable
+    trials so far (responses; errors are counted as consumed attempts by the caller, not as evaluable denominator).
+    The positive-confirm lower bound is Bonferroni-corrected by `n_looks`, the predeclared number of interim looks, so
+    checking a fixed-sample Wilson interval after every wave cannot inflate the false-confirm rate (LSCAN-028);
+    `n_looks == 1` reproduces the previous single-look behaviour exactly. Futility ("cannot reach") is one-sided and
+    never confirms, so it needs no correction."""
     required = max(CONFIRM_MIN_HITS, math.ceil(CONFIRM_MIN_RATE * planned - 1e-9))
     if hits + (planned - done) < required:
         return "cannot reach the §2.2 threshold"
-    if done >= MIN_TRIALS and hits >= CONFIRM_MIN_HITS and wilson(hits, done)[0] >= CONFIRM_MIN_RATE:
+    if done >= MIN_TRIALS and hits >= CONFIRM_MIN_HITS \
+            and wilson(hits, done, z=sequential_z(n_looks))[0] >= CONFIRM_MIN_RATE:
         return "confirmed (CI lower bound ≥ threshold)"
     return None
 
@@ -138,6 +144,9 @@ def run_technique(target, gov: Governor, attack_id: str, *, trials: int, tempera
                                         "messages": trial.messages, "output": result.text})
 
     sent = 0
+    # Predeclare the interim-look count from the plan so the confirmation multiplicity correction is fixed up front
+    # (LSCAN-028), not derived from where the run happens to stop.
+    n_looks = planned_looks(trials, MIN_TRIALS, max(1, concurrency)) if adaptive else 1
     with ThreadPoolExecutor(max(1, concurrency)) as ex:
         while sent < trials and out.complete:
             # adaptive: a first wave of MIN_TRIALS (the earliest point a decision is allowed), then waves of
@@ -147,7 +156,7 @@ def run_technique(target, gov: Governor, attack_id: str, *, trials: int, tempera
             for r in ex.map(one, [(temperature, make()) for _ in range(n)]):
                 record(*r)
             sent += n
-            if adaptive and sent < trials and (why := stop_reason(out.hits, out.trials + out.errors, trials)):
+            if adaptive and sent < trials and (why := stop_reason(out.hits, out.trials, trials, n_looks=n_looks)):
                 out.stopped_early = why
                 break
         want_temp0 = temperature > 0 and out.complete and (

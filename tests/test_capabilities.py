@@ -79,3 +79,24 @@ def test_gaps_are_identified_and_every_gap_is_ticketed():
 def test_coverage_md_has_a_gaps_section():
     md = (ROOT / "docs" / "coverage.md").read_text(encoding="utf-8")
     assert "## Gaps — no reliable coverage yet (task 600)" in md
+
+
+def test_variation_coverage_rows_cover_every_catalog_id_and_gate_unsupported_cells():
+    # LSCAN-087: a per-technique dimension row for every catalog id; gated (deferred/experimental) techniques are
+    # not-runnable so an unsupported cell can never improve a grade.
+    rows = coverage.variation_coverage(CAPS)
+    assert {r["id"] for r in rows} == set(coverage.catalog_ids())
+    for r in rows:
+        assert set(r) >= {"id", "family", "oracle", "evidence_level", "replay", "status", "runnable"}
+        if r["status"] in ("deferred", "experimental"):
+            assert r["runnable"] is False               # gated cells cannot count toward a grade
+        if r["runnable"]:
+            assert r["oracle"] != "none"                # a runnable technique has a real oracle
+
+
+def test_variation_coverage_md_is_current_and_honest():
+    md = (ROOT / "docs" / "variation_coverage.md").read_text(encoding="utf-8")
+    assert md == coverage.render_variation(CAPS), "docs/variation_coverage.md is stale — run engines/coverage_matrix.py"
+    assert "not" in md and "Cartesian product" in md          # no unbounded-coverage claim
+    assert "cannot improve a grade" in md                     # unsupported cells never help the grade
+    assert "no (gated)" in md                                 # gated techniques are shown as such

@@ -50,6 +50,7 @@ class TargetProfile:
     max_tokens_accepted: int | None = None
     declared: dict = field(default_factory=dict)  # router-declared capabilities (may be empty)
     disagreements: list[str] = field(default_factory=list)
+    features: dict = field(default_factory=dict)  # LSCAN-022 feature negotiation: {control: {state, probed, ...}}
     requests: int = 0
 
     def has(self, name: str) -> bool | None:
@@ -103,12 +104,18 @@ def _visible(text: str) -> str:
     return re.sub(r"<think>.*?(</think>|$)", "", text, flags=re.DOTALL).strip()
 
 
-def run_recon(target: OpenAICompatTarget | GradioSpaceTarget, declared: dict | None = None) -> TargetProfile:
-    """Probe a target. The caller supplies the target's governor (its ledger bounds recon spend)."""
+def run_recon(target: OpenAICompatTarget | GradioSpaceTarget, declared: dict | None = None, *,
+              negotiate_features: bool = False) -> TargetProfile:
+    """Probe a target. The caller supplies the target's governor (its ledger bounds recon spend). When
+    `negotiate_features` is set, also run the LSCAN-022 feature-negotiation probe and record the result on the profile
+    (off by default, so the normal recon request budget is unchanged)."""
     pr, prof = _Prober(target), TargetProfile(declared=dict(declared or {}))
     f = prof.facts
     try:
         _probe_all(pr, prof)
+        if negotiate_features:
+            from hfsentinel.targets.feature_probe import negotiate
+            prof.features = negotiate(target)
     except BudgetExceeded:
         for name in FACTS:
             f.setdefault(name, Fact(None, "budget"))

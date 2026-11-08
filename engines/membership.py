@@ -42,8 +42,9 @@ def threshold_at_fpr(nonmember_scores: list[float], fpr: float) -> float:
     if not nonmember_scores:
         raise ValueError("need nonmember scores to calibrate a threshold")
     ranked = sorted(nonmember_scores, reverse=True)       # most member-like first
-    # Allow floor(fpr * n) false positives; the threshold sits just above the (k+1)-th highest nonmember score.
-    k = int(fpr * len(ranked))
+    # Allow floor(fpr * n) false positives; the threshold sits just above the (k+1)-th highest nonmember score. The
+    # +1e-9 guards against float truncation — e.g. 0.29*100 == 28.9999…, which bare int() would floor to 28, not 29.
+    k = int(fpr * len(ranked) + 1e-9)
     if k == 0:
         return ranked[0] + 1e-9                           # admit none: threshold above the top nonmember
     return ranked[k - 1]                                  # admit exactly the k most member-like nonmembers

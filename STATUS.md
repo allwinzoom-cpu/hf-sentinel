@@ -281,6 +281,8 @@ build → verify in Linux containers (D-009) → tick + log here.
 
 - LSCAN-071 (GATE core) · Output injection with controlled consumers — new `attacks/output_consumer.py`: evidence rises emitted (generated-artifact) → interpretable (a real consumer would act, attempted-action) → executed-harmless-marker (completed-effect); a quoted/inert code example is never more than emitted and fails the exploitation oracle; `is_exploitation` requires at least unsafe interpretation. No arbitrary command execution; URLs never auto-fetched. 3 tests green.
 
+- LSCAN-026 · Session/environment fixture lifecycle — new `engines/session_fixture.py`: versioned `SessionFixture` (identity/tenant, planted canaries, tool inventory, memory snapshot, task state) with a clean `reset()` (carries config, drops canaries/task state); `contaminated()`/`control_is_valid()` catch a control session inheriting a prior attack's canary BEFORE scoring; `safe_to_resume()` resumes only a proven state else restarts clean. 3 tests green.
+
 ## In progress
 - **Deterministic model-only attack surface is complete and shipped** (CLI + Space UI, 663/664): native breadth sweep (A1–A6, C2, E1–E3) + opt-in LLM-native stages (multi-turn escalation, C3 memorization, H1 slopsquatting, H2 fabricated API, H5 sycophancy, H6 fabricated citation, H7 overconfidence, H3/H4 NLI false-premise), all scored by deterministic oracles, no judge. 52/71 ticked. Every remaining task is externally gated (see "Blockers / needs human"), not an open build:
   - Judge-scored harmful-goal jailbreaks (B3–B21, B23; tasks 618 A6/B22 controls, 641–643, 646) need the LLM-judge credentials (D-017) — their catalog oracle is a jailbreak judge, so a deterministic stand-in would misrepresent them (rejected as fluff).

@@ -169,3 +169,40 @@ def build_attack(payload: str, key: str, *, options: dict | None = None) -> str:
     """The 'obfuscate then try' unit (§16.7): the decode hint followed by the obfuscated payload — the prompt to send to
     the target."""
     return f"{decode_hint(key)}\n{encode(key, payload, options=options)}"
+
+
+# ---- Laya System-1 selection (advisory) --------------------------------------------------------------------------
+# Laya ranks WHICH encoding to try first for a target profile; the deterministic canary round-trip stays the decider.
+# This is selection, not evaluation — advisory only, fail-soft, never overriding a verdict ([[laya-involved-everywhere]]).
+
+def candidate_encodings(*, per_category: int = 1, limit: int = 12) -> dict[str, str]:
+    """A small menu of encodings for System-1 selection: up to `per_category` per category, capped at `limit`, as
+    {key: description}. Small enough for Laya to rank. Raises `ObfuscationError` if the layer is unavailable."""
+    out: dict[str, str] = {}
+    seen: dict[str, int] = {}
+    for e in available_encodings():
+        if seen.get(e.category, 0) < per_category:
+            out[e.key] = e.description or e.name
+            seen[e.category] = seen.get(e.category, 0) + 1
+        if len(out) >= limit:
+            break
+    return out
+
+
+def advise_encoding(system_one, profile: dict, *, candidates: dict[str, str] | None = None) -> str | None:
+    """Laya System-1 selection (advisory): pick which encoding to try first for this target profile. Returns the chosen
+    encoding key, or None to fall back to deterministic breadth — when Laya is absent/unavailable, uncertain (its
+    `Decision` escalates), the engine is unavailable, or it names an out-of-menu choice. Advisory ONLY: it never overrides
+    the deterministic scoring oracle, matching the campaign's `choose_technique` usage ([[laya-involved-everywhere]])."""
+    if system_one is None or not getattr(system_one, "available", False):
+        return None
+    try:
+        cand = candidates if candidates is not None else candidate_encodings()
+    except ObfuscationError:
+        return None
+    if not cand:
+        return None
+    decision = system_one.choose_technique(profile, cand)
+    if decision.escalate():                               # Laya unsure -> caller uses deterministic breadth
+        return None
+    return decision.choice if decision.choice in cand else None

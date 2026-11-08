@@ -83,16 +83,20 @@ def stop_reason(hits: int, done: int, planned: int, *, n_looks: int = 1) -> str 
 
 def run_technique(target, gov: Governor, attack_id: str, *, trials: int, temperature: float, max_tokens: int,
                   concurrency: int, canaries: CanaryRun, seed: int = 0, adaptive: bool = False,
-                  mutator: str | None = None, baseline: bool = False, keep_transcripts: bool = False) -> TechniqueRun:
+                  mutator: str | None = None, mutators: list[str] | None = None, baseline: bool = False,
+                  keep_transcripts: bool = False) -> TechniqueRun:
     """`trials` sampled attempts (+1 at temperature 0). Adaptive: trials run in waves of `concurrency` and stop early
     once the outcome is decided; the temperature-0 attempt runs only when it can still change the outcome.
-    `mutator`: obfuscate each canary technique's user instruction (campaign S4 escalation) — the planted canary is
-    unchanged, so the oracle still scores the (decoded, plaintext) output."""
+    `mutators`: an ordered chain that obfuscates each canary technique's user instruction (campaign S4 escalation) —
+    the planted canary is unchanged, so the oracle still scores the (decoded, plaintext) output. `mutator` is the
+    single-mutator shorthand (kept for callers); the full ordered chain is recorded on the run so replay reproduces it
+    exactly, not just its first element (LSCAN-025)."""
     if attack_id not in NATIVE:
         raise ValueError(f"{attack_id} has no native oracle")
     out = TechniqueRun(attack_id, seed=seed, planned_trials=trials)
-    if mutator and attack_id in CANARY_IDS and not baseline:
-        out.mutator_chain = [mutator]
+    chain = list(mutators) if mutators else ([mutator] if mutator else [])
+    if chain and attack_id in CANARY_IDS and not baseline:
+        out.mutator_chain = chain
     rng = random.Random(f"{seed}:{attack_id}")
     usd0, start = _spend(gov), time.monotonic()
 
@@ -100,7 +104,7 @@ def run_technique(target, gov: Governor, attack_id: str, *, trials: int, tempera
         if baseline:
             return canaries.baseline(attack_id) if attack_id in CANARY_IDS else category_e.build_baseline(attack_id, rng)
         trial = canaries.trial(attack_id) if attack_id in CANARY_IDS else category_e.build_trial(attack_id, rng)
-        return _mutate(trial, mutator) if (mutator and attack_id in CANARY_IDS) else trial
+        return _mutate(trial, chain) if (chain and attack_id in CANARY_IDS) else trial
 
     def one(job):
         temp, trial = job
@@ -170,13 +174,13 @@ def run_technique(target, gov: Governor, attack_id: str, *, trials: int, tempera
 def _int(v: object) -> int:
     return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 10**9 else 0
 
-def _mutate(trial, mutator: str):
-    """Return a copy of a canary trial whose str user messages are wrapped by the named mutator (S4)."""
-    from hfsentinel.attacks.mutators import wrap_injection
+def _mutate(trial, chain: list[str]):
+    """Return a copy of a canary trial whose str user messages are wrapped by the ordered mutator `chain` (S4)."""
+    from hfsentinel.attacks.mutators import wrap_injection_chain
     msgs = []
     for m in trial.messages:
         if m.get('role') == 'user' and isinstance(m.get('content'), str):
-            msgs.append({**m, 'content': wrap_injection(m['content'], mutator)})
+            msgs.append({**m, 'content': wrap_injection_chain(m['content'], chain)})
         else:
             msgs.append(dict(m))
     return replace(trial, messages=msgs)

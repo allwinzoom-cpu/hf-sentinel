@@ -50,6 +50,18 @@ class TapResult:
     path: tuple[str, ...] = ()  # the winning ordered attacker prompts, for a held-out replay
 
 
+@dataclass
+class ReasoningAttackerResult:
+    """B11 autonomous reasoning-model attacker outcome."""
+    broke: bool
+    turns: int = 0
+    break_turn: int = 0
+    plans: int = 0
+    target_calls: int = 0
+    reasoning_seen: bool = False
+    path: tuple[str, ...] = ()
+
+
 def _render_history(history: list[dict]) -> str:
     if not history:
         return "(no messages yet — this is the first turn)"
@@ -93,6 +105,47 @@ def run_adaptive(attacker: Callable[[str, list[dict]], str], target: Target, *, 
         if oracle(reply, canary):
             return AttackResult(broke=True, turns=sent, break_turn=turn)
     return AttackResult(broke=False, turns=sent)
+
+
+def run_reasoning_attacker(attacker: Callable[[str, list[dict]], str], target: Callable[[list[dict]], object],
+                          *, canary: str | None = None, max_turns: int = 5,
+                          oracle: Callable[[str, str], str | None] = find_canary) -> ReasoningAttackerResult:
+    """B11: an autonomous attacker plans each turn from target history and optional reasoning traces.
+
+    The attacker still uses only the benign canary objective. Visibility of a reasoning trace is
+    applicability evidence; a hit is scored only from the target's final visible output.
+    """
+    from hfsentinel.attacks.canary import code_canary
+
+    canary = canary or code_canary()
+    result = ReasoningAttackerResult(broke=False)
+    history: list[dict] = []
+    for turn in range(1, max_turns + 1):
+        try:
+            prompt = attacker(canary, history)
+        except Exception:  # noqa: BLE001,S112 — attacker/refusal failures skip a turn, never crash the run
+            continue
+        if not prompt:
+            continue
+        result.plans += 1
+        message = history + [{"role": "user", "content": prompt}]
+        try:
+            reply = target(message)
+        except Exception:  # noqa: BLE001 — target/budget error ends the run with what we have
+            break
+        result.target_calls += 1
+        result.turns += 1
+        text = getattr(reply, "text", reply) or ""
+        reasoning = getattr(reply, "reasoning", "") or ""
+        result.reasoning_seen = result.reasoning_seen or bool(reasoning)
+        history = history + [{"role": "user", "content": prompt},
+                             {"role": "assistant", "content": text, "reasoning": reasoning}]
+        result.path = (*result.path, prompt)
+        if oracle(text, canary) is not None:
+            result.broke = True
+            result.break_turn = turn
+            break
+    return result
 
 
 def run_tap(branch: Callable[[str, list[dict]], list[str]], target: Target, *, canary: str | None = None,

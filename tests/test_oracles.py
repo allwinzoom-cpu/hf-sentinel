@@ -62,3 +62,10 @@ def test_planner_runs_candidates_experimental_and_never_scores_them():
 
 def test_scored_statuses_are_exactly_ready_and_conditional():
     assert set(SCORED_STATUSES) == {"ready", "conditional"}
+
+
+def test_best_of_n_native_oracle_is_deterministic_and_held_out():
+    oracle = ORACLES["B13"]
+    assert oracle.kind == "deterministic"
+    assert oracle.impl == "hfsentinel.attacks.canary:find_canary"
+    assert "fresh-canary confirmation" in oracle.note

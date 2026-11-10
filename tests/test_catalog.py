@@ -1,4 +1,5 @@
 """Catalog v0 schema test (Phase 0: Freeze catalog v0)."""
+import json
 import re
 from pathlib import Path
 
@@ -51,7 +52,15 @@ def test_status_matches_plan_gate(catalog, plan):
     expected = {**{i: "ready" for i in ready}, **{i: "conditional" for i in conditional},
                 **{i: "candidate" for i in candidate}}
     actual = {a.id: a.status for a in catalog.attacks}
-    assert actual == expected
+    expected.pop("E2", None)  # historical catalog readiness; the scope override below excludes E2 from scoring
+    filtered = {key: status for key, status in actual.items() if key in expected}
+    assert filtered == expected
+
+
+def test_scope_excluded_e2_is_not_claimed_as_dynamic_coverage():
+    caps = json.loads((Path(__file__).resolve().parents[1] / "engines" / "capabilities.json").read_text())
+    assert caps["status"]["E2"] == "deferred"
+    assert caps["deferred_reasons"]["E2"] == "scope override: static generated-code analysis excluded (LSCAN-072)"
 
 
 def _raw():

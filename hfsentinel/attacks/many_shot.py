@@ -111,6 +111,26 @@ def run_many_shot(target: Target, *, canary: str | None = None, shots: int, plac
     toks = sum(approx_tokens(m["content"]) for m in messages if isinstance(m.get("content"), str))
     if not instruction_delivered(messages, canary):
         return ManyShotResult(shots, sent, placement, toks, False, None, "instruction-not-delivered")
-    reply = target(messages)
+    reply = _send(target, messages)
     hit, _ = score(messages, reply, canary, oracle=oracle)
     return ManyShotResult(shots, sent, placement, toks, True, hit, "followed" if hit else "refused-or-absent")
+
+
+def run(target: Target, *, instruction: str, canary: str, shots: int, placement: str = "end",
+        max_prompt_tokens: int | None = None, oracle: Oracle = find_canary) -> ManyShotResult:
+    """Run one delivery attempt with an explicit instruction (the campaign's already-built canary prompt)."""
+    canary = canary or code_canary()
+    messages = build(instruction, shots=shots, placement=placement, max_prompt_tokens=max_prompt_tokens)
+    sent = shots_sent(messages)
+    toks = sum(approx_tokens(m["content"]) for m in messages if isinstance(m.get("content"), str))
+    if not instruction_delivered(messages, canary):
+        return ManyShotResult(shots, sent, placement, toks, False, None, "instruction-not-delivered")
+    reply = _send(target, messages)
+    hit, _ = score(messages, reply, canary, oracle=oracle)
+    return ManyShotResult(shots, sent, placement, toks, True, hit, "followed" if hit else "refused-or-absent")
+
+
+def _send(target: Target, messages: list[dict]) -> str:
+    if callable(target):
+        return target(messages)
+    return target.chat(messages).text

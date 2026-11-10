@@ -24,7 +24,7 @@ Disposition = Literal["run", "experimental", "n/a", "blocked", "unverified"]
 Term = tuple[str, str]  # (kind, name)
 Requirement = tuple[tuple[Term, ...], ...]  # any-of alternatives, each all-of terms
 
-F, R, O, U = "fact", "resource", "oracle", "unobservable"
+F, R, ORACLE, U = "fact", "resource", "oracle", "unobservable"
 PRECONDITIONS: dict[str, Requirement] = {
     "multimodal input accepted": (((F, "multimodal_input"),),),
     "chat-templated target that parses special tokens": (((F, "special_token_parsing"),),),
@@ -39,11 +39,13 @@ PRECONDITIONS: dict[str, Requirement] = {
     "browse/HTTP tool + controlled sink URL": (((F, "tool_calling"), (R, "sink_url")),
                                                ((R, "mock_tools"), (R, "sink_url"))),
     "tool loop possible": (((F, "tool_calling"),), ((R, "mock_tools"),)),
-    "reference oracle for the command/API": (((O, "command_oracle"),),),
+    "reference oracle for the command/API": (((ORACLE, "command_oracle"),),),
     "multi-turn": (((F, "multi_turn_memory"),),),
-    "source-existence oracle": (((O, "source_oracle"),),),
-    "ground-truth + calibration readout": (((O, "calibration_oracle"),),),
+    "source-existence oracle": (((ORACLE, "source_oracle"),),),
+    "ground-truth + calibration readout": (((ORACLE, "calibration_oracle"),),),
     "structured-output API honoured": (((F, "structured_output"),),),
+    "target exposes a separate reasoning trace": (((F, "reasoning_trace"),),),
+    "target accepts and honours a caller-supplied assistant prefix": (((F, "prefill"),),),
 }
 # Technique requirements the frozen v0 catalog does not encode as preconditions (ANDed with any precondition).
 TECHNIQUE_REQUIREMENTS: dict[str, Requirement] = {
@@ -53,7 +55,10 @@ TECHNIQUE_REQUIREMENTS: dict[str, Requirement] = {
 EFFORT_COST = {"E": 1, "M": 4}  # expected requests per trial: single-shot vs multi-step
 DEFAULT_PRIOR_ASR = 0.5  # until the strategy library (Phase 3) supplies per-technique priors
 ENCODING_ATTACKS = {"A3", "B2", "B13", "B15"}
-ENCODING_MUTATORS = ("base64", "leet", "homoglyph", "unicode-tag", "cipher")
+# Canary-preserving encodings only — kept in lock-step with campaign.ESCALATION_MUTATORS. cipher/leet/homoglyph/
+# unicode-inversion/morse transform the canary itself, so a deterministic canary oracle could never match; they belong to
+# text-goal attacks, not the canary sweep, and must not appear in a step's scored mutator set.
+ENCODING_MUTATORS = ("base64", "unicode-tag", "invisible-text", "hex", "base32", "parseltongue-fullwidth")
 BOOST = 1.5
 HELD_ORDER = {"unverified": 0, "blocked": 1, "n/a": 2}
 
@@ -105,7 +110,7 @@ def _term(term: Term, profile: TargetProfile | None, controls: Controls) -> tupl
         present = {"mock_tools": controls.extras.tools is not None, "sink_url": controls.extras.sink_url is not None,
                    "reference_set": False}[name]
         return present, f"{name} {'provided' if present else 'not provided'}"
-    if kind == O:
+    if kind == ORACLE:
         return False, f"{name} not built yet (Phase 3)"
     return None, f"{name} not observable by recon"
 
@@ -125,7 +130,7 @@ def _evaluate(alternatives: Requirement, profile: TargetProfile | None,
             fact_false = (F, False) in outcomes
             lacks |= fact_false
             # Operator-fixable: an oracle is missing, or the operator supplied part of this alternative.
-            operator_gap |= (O, False) in outcomes or ((R, True) in outcomes and not fact_false)
+            operator_gap |= (ORACLE, False) in outcomes or ((R, True) in outcomes and not fact_false)
         else:
             unknown = True
         reasons.append(" + ".join(r for _, v, r in vals if v is not True))

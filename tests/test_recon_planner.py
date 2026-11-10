@@ -25,6 +25,22 @@ CAT = load_catalog()
 TARGET = parse("openai+http://127.0.0.1:1/v1#m")
 
 
+@pytest.fixture(autouse=True)
+def _offline_secrets(monkeypatch, tmp_path):
+    """Keep local secret discovery away from a protected cwd dotenv."""
+    for name in ("HF_TOKEN", "hf_tok", "HF_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HFSENTINEL_ENV_FILE", str(tmp_path / "absent.env"))
+
+
+@pytest.fixture(autouse=True)
+def _offline_secrets(monkeypatch, tmp_path):
+    """Keep local secret discovery away from a protected cwd dotenv."""
+    for name in ("HF_TOKEN", "hf_tok", "HF_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HFSENTINEL_ENV_FILE", str(tmp_path / "absent.env"))
+
+
 def _text(content):
     return content if isinstance(content, str) else " ".join(
         p.get("text", "") for p in content if isinstance(p, dict))
@@ -247,15 +263,24 @@ def test_keyword_filter_favours_encoding_and_limits_mutators():
     filtered = plan_for(profile(keyword_filter=True), {"mutators": "base64,leet,case"})
     assert filtered["B2"].score == pytest.approx(plain["B2"].score * planner.BOOST)
     assert filtered["B1"].score == pytest.approx(plain["B1"].score)
-    assert filtered["B2"].mutators == ("base64", "leet") and plain["B2"].mutators == ()
+    # leet/case are dropped: leet transforms the canary (not a scored encoding) and case is not an encoding mutator.
+    assert filtered["B2"].mutators == ("base64",) and plain["B2"].mutators == ()
     assert "keyword-filter" in filtered["B2"].rationale
+
+
+def test_keyword_filter_includes_parseltongue_aliases_in_planner_order():
+    filtered = plan_for(profile(keyword_filter=True))
+    assert filtered["B2"].mutators == planner.ENCODING_MUTATORS
+    # canary-preserving encodings only; canary-destroying transforms must NOT appear in a scored step's mutator set.
+    assert {"base64", "unicode-tag", "parseltongue-fullwidth"} <= set(planner.ENCODING_MUTATORS)
+    assert {"morse", "leet", "cipher", "homoglyph", "unicode-inversion"}.isdisjoint(set(planner.ENCODING_MUTATORS))
 
 
 def test_observed_capabilities_unlock_and_boost():
     steps = plan_for(profile(special_token_parsing=True, reasoning_trace=True, prefill=True, structured_output=True))
     assert steps["A6"].disposition == "run" and "special tokens parsed" in steps["A6"].rationale
-    # B10 stays an experimental candidate; B23 is now a SCORED conditional → run once structured output is observed.
-    assert steps["B10"].disposition == "experimental" and steps["B23"].disposition == "run"
+    # B10/B23 are scored conditionals once their recon evidence is observed.
+    assert steps["B10"].disposition == "run" and steps["B23"].disposition == "run"
     assert steps["B12"].disposition == "run"
 
 

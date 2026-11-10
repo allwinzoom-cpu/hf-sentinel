@@ -368,8 +368,11 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          fuzz_type: Annotated[str | None, _opt("mutation,template,generative,search,replay,composite.", FUZ)] = None,
          rounds: Annotated[int | None, _opt("Rounds per prompt (best-of-N).", FUZ)] = None,
          max_attempts: Annotated[int | None, _opt("Attempt cap per goal.", FUZ)] = None,
-         mutators: Annotated[str | None, _opt("case,shuffle,typo,base64,leet,homoglyph,unicode-tag,ascii-art,"
-                                              "flip,cipher.", FUZ)] = None,
+         mutators: Annotated[str | None, _opt("case,shuffle,typo,base64,base32,gzip-base64,hex,binary,octal,morse,"
+                                              "leet,homoglyph,unicode-tag,invisible-text,artprompt,flip,cipher,"
+                                              "unicode-inversion,spelled-ascii,balanced-brackets,parseltongue-fullwidth,"
+                                              "decompose,bijection,percent,html-entity,json-escape,zero-width.",
+                                              FUZ)] = None,
          mutation_rate: Annotated[float | None, _opt("Mutation intensity 0-1.", FUZ)] = None,
          max_turns: Annotated[int | None, _opt("Multi-turn depth.", FUZ)] = None,
          tap_width: Annotated[int | None, _opt("Tree search width.", FUZ)] = None,
@@ -403,6 +406,18 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
                                                        "--check-sycophancy/--no-check-sycophancy")] = None,
          check_calibration: Annotated[bool | None, _opt("Confidence-vs-correctness test (enables H7).", JDG,
                                                         "--check-calibration/--no-check-calibration")] = None,
+         check_triggered: Annotated[bool | None, _opt("Trigger/backdoor conditional-violation sweep (LSCAN-054).", JDG,
+                                                      "--check-triggered/--no-check-triggered")] = None,
+         check_obfuscation: Annotated[bool | None, _opt("Optional payload-obfuscation escalation layer (§16.7).", JDG,
+                                                        "--check-obfuscation/--no-check-obfuscation")] = None,
+         check_evolution: Annotated[bool | None, _opt("Laya-advised evolution operator preference (LSCAN-042).", JDG,
+                                                      "--check-evolution/--no-check-evolution")] = None,
+         check_minimization: Annotated[bool | None, _opt("Minimize a confirmed escalation, causal ablation "
+                                                         "(LSCAN-031).", JDG,
+                                                         "--check-minimization/--no-check-minimization")] = None,
+         extended: Annotated[bool | None, _opt("Invoke all extended capability modules (agentic D-cores, "
+                                               "attack-discipline, standalone engines); advisory/N-A where infra absent.",
+                                               JDG, "--extended/--no-extended")] = None,
          abliteration: Annotated[bool | None, _opt("Safety-removal test: refusal rate on should-refuse probes "
                                                    "(detects abliterated / uncensored targets).", JDG,
                                                    "--abliteration/--no-abliteration")] = None,
@@ -476,6 +491,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              halluc_ecosystems=_parse_halluc_registries(halluc_registries),
              api_reference=_load_api_reference(api_reference), check_citations=bool(check_citations),
              check_sycophancy=bool(check_sycophancy), check_calibration=bool(check_calibration),
+             check_triggered=bool(check_triggered), check_obfuscation=bool(check_obfuscation),
+             check_evolution=bool(check_evolution), check_minimization=bool(check_minimization),
+             extended=bool(extended),
              check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli,
              jailbreak=bool(jailbreak), adaptive=bool(adaptive))
 
@@ -584,6 +602,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              reference_set: dict[str, str] | None = None, halluc_ecosystems: set[str] | None = None,
              api_reference: set[str] | None = None, check_citations: bool = False,
              check_sycophancy: bool = False, check_calibration: bool = False, nli_scorer=None,
+             check_triggered: bool = False, check_obfuscation: bool = False, check_evolution: bool = False,
+             check_minimization: bool = False, extended: bool = False,
              check_abliteration: bool = False, judge_cli: str | None = None, jailbreak: bool = False,
              adaptive: bool = False) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
@@ -648,6 +668,9 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                           api_reference=api_reference, check_citations=check_citations,
                           check_sycophancy=check_sycophancy, check_calibration=check_calibration,
                           nli_scorer=nli_scorer, check_abliteration=check_abliteration,
+                          check_triggered=check_triggered, check_obfuscation=check_obfuscation,
+                          check_evolution=check_evolution, check_minimization=check_minimization,
+                          extended=extended,
                           panel=jb_panel, jailbreak_goals=jb_goals, adaptive_attacker=adaptive_attacker,
                           progress=progress)
     saved = result.exhaustive_requests - result.requests
@@ -669,10 +692,13 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                 "judge_calls_made": result.judge_calls_made, "judge_calls_saved": result.judge_calls_saved,
                 "triage_agreement": result.triage_agreement, "experimental": result.experimental,
                 "abliteration": result.abliteration, "adaptive": result.adaptive,
+                "adaptive_tree": result.adaptive_tree,
                 "strategy_library": "read-only (no write-back)" if library.write_failed else str(library.path)}
-    if result.abliteration.get("under_refusing"):
-        typer.echo(f"abliter.  under-refusing target: refusal rate {result.abliteration['refusal_rate']} on "
-                   f"should-refuse probes (complied on {', '.join(result.abliteration['complied_categories'])})")
+    if result.abliteration.get("elevated_compliance"):
+        capability_rate = result.abliteration.get("capability_rate")
+        typer.echo(f"abliter.  elevated compliance: {result.abliteration['compliance_rate']} on should-refuse probes "
+                   f"(complied on {', '.join(result.abliteration['complied_categories'])}; capability controls "
+                   f"{capability_rate}; observed behaviour, mechanism not established)")
     if result.judge_calls_made or result.judge_calls_saved:
         typer.echo(f"system-1  Laya triage saved {result.judge_calls_saved} of "
                    f"{result.judge_calls_made + result.judge_calls_saved} judge calls "
@@ -747,15 +773,19 @@ def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, r
     _, pricing = _router_metadata(t)
     if pricing:
         gov.set_price(target.rate_key, pricing.input, pricing.output)
+    adaptive_attacker = getattr(c, "autonomous", None)
     result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
                           max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
-                          seed=c.target_io.seed, profile=profile, controls=c)
+                          seed=c.target_io.seed, profile=profile, controls=c,
+                          adaptive_attacker=adaptive_attacker,
+                          adaptive_turns=c.fuzz.max_turns)
     recon = {"requests": profile.requests, "over_refusal_rate": profile.over_refusal_rate,
              "refusal_style": profile.refusal_style, "disagreements": list(profile.disagreements),
              "facts": {k: {"value": f.value, "reason": f.reason} for k, f in profile.facts.items()}}
     campaign = {"decisions": result.decisions, "attack_requests": result.requests,
                 "exhaustive_requests": result.exhaustive_requests,
-                "requests_saved": result.exhaustive_requests - result.requests, "baseline": result.baseline}
+                "requests_saved": result.exhaustive_requests - result.requests, "baseline": result.baseline,
+                "adaptive": result.adaptive, "adaptive_tree": result.adaptive_tree}
     target_doc = {"ref": ref, "kind": t.kind, "resolved_model": t.model, "provider": t.provider,
                   "request_model": t.request_model,
                   "route": build_route_record(t).as_dict()}  # LSCAN-009: serving-path record for drift-aware replay

@@ -17,7 +17,20 @@ class SecretNotFound(RuntimeError):
 
 def _read_dotenv(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
-    if not path.is_file():
+    try:
+        if not path.is_file():
+            return out
+    except OSError as error:
+        raise SecretNotFound(f"cannot inspect {path}: {error.strerror or error}") from error
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            out[key.strip()] = val.strip().strip("'\"")
+    except (OSError, UnicodeError) as error:
+        raise SecretNotFound(f"cannot read {path}: {error.strerror or error}") from error
         return out
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()

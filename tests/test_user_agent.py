@@ -16,6 +16,15 @@ from hfsentinel.targets.gradio_space import GradioSpaceTarget
 from hfsentinel.targets.openai_compat import DEFAULT_USER_AGENT, OpenAICompatTarget
 
 ROOT = Path(__file__).resolve().parents[1]
+runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _offline_secrets(monkeypatch, tmp_path):
+    """CLI dry runs must not depend on local secret files."""
+    for name in ("HF_TOKEN", "hf_tok", "HF_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HFSENTINEL_ENV_FILE", str(tmp_path / "absent.env"))
 
 
 def test_default_tracks_the_package_version():

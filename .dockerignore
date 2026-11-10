@@ -7,6 +7,7 @@
 !docs/spike/
 !docs/judges/
 !docs/coverage.md
+!docs/variation_coverage.md
 !tests/
 !calibration/
 !pyproject.toml

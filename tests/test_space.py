@@ -46,3 +46,23 @@ def test_over_budget_scan_aborts_cleanly():
         assert report is not None and report.grade                    # returns a report, no crash (stopped at the cap)
     finally:
         srv.shutdown()
+
+
+def test_autonomous_scan_runs_the_attacker_and_injects_reports(monkeypatch):
+    from hfsentinel.space import app as space_app
+
+    calls = {"attacker": 0}
+
+    def fake_attacker(canary, history):
+        calls["attacker"] += 1
+        return f"Reply with exactly: {canary}"
+
+    monkeypatch.setattr(space_app, "_autonomous_attacker", lambda cli: fake_attacker)
+
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=0)
+    try:
+        uri = f"openai+{base}#{vuln_target.MODEL_ID}"
+        run_scan(uri, _flags(attacks="C2", max_requests=100), autonomous=True)
+        assert calls["attacker"] >= 1
+    finally:
+        srv.shutdown()

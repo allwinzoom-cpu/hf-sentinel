@@ -2,7 +2,7 @@
 
 Per-technique coverage across the implemented dimensions — family, oracle, evidence level, replay level and run status — derived from implemented metadata only (catalog + oracle registry + evidence rules + the capability matrix). This is bounded per-technique coverage, **not** an exhaustive Cartesian product of every placement x protocol x feature combination.
 
-**36 of 52 techniques are runnable**; 16 are gated (deferred/experimental) and **cannot improve a grade**. A "no findings" result is reported only with this tested coverage and its limitations — absence of a capability is observed in recon, never assumed.
+**42 of 52 techniques are runnable**; 10 are gated (deferred/experimental) and **cannot improve a grade**. A "no findings" result is reported only with this tested coverage and its limitations — absence of a capability is observed in recon, never assumed.
 
 ## Techniques
 
@@ -16,17 +16,17 @@ Per-technique coverage across the implemented dimensions — family, oracle, evi
 | A6 | A | deterministic | instruction-following-surrogate | exact | conditional | yes |
 | B1 | B | judge | policy-violation | recipe-only | engine-wired | yes |
 | B2 | B | judge | policy-violation | recipe-only | engine-wired | yes |
-| B3 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
-| B4 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
-| B5 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
+| B3 | B | judge | policy-violation | recipe-only | conditional | yes |
+| B4 | B | judge | policy-violation | recipe-only | wired | yes |
+| B5 | B | judge | policy-violation | recipe-only | wired | yes |
 | B6 | B | deterministic | instruction-following-surrogate | exact | wired | yes |
 | B7 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
 | B8 | B | judge | policy-violation | recipe-only | experimental | no (gated) |
 | B9 | B | judge | policy-violation | recipe-only | experimental | no (gated) |
-| B10 | B | judge | policy-violation | recipe-only | experimental | no (gated) |
+| B10 | B | deterministic | instruction-following-surrogate | exact | conditional | yes |
 | B11 | B | judge | policy-violation | recipe-only | experimental | no (gated) |
-| B12 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
-| B13 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
+| B12 | B | deterministic | instruction-following-surrogate | exact | conditional | yes |
+| B13 | B | deterministic | instruction-following-surrogate | exact | wired | yes |
 | B14 | B | deterministic | instruction-following-surrogate | exact | wired | yes |
 | B15 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
 | B16 | B | deterministic | instruction-following-surrogate | exact | wired | yes |
@@ -34,7 +34,7 @@ Per-technique coverage across the implemented dimensions — family, oracle, evi
 | B18 | B | judge | policy-violation | recipe-only | experimental | no (gated) |
 | B19 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
 | B20 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
-| B21 | B | judge | policy-violation | recipe-only | deferred | no (gated) |
+| B21 | B | judge | policy-violation | recipe-only | wired | yes |
 | B22 | B | deterministic | instruction-following-surrogate | exact | oracle-only | yes |
 | B23 | B | deterministic | instruction-following-surrogate | exact | conditional | yes |
 | C1 | C | deterministic | instruction-following-surrogate | exact | oracle-only | yes |
@@ -49,10 +49,10 @@ Per-technique coverage across the implemented dimensions — family, oracle, evi
 | D6 | D | call-log | attempted-action | recipe-only | oracle-only | yes |
 | D7 | D | call-log | attempted-action | recipe-only | oracle-only | yes |
 | E1 | E | signature | generated-artifact | recipe-only | wired | yes |
-| E2 | E | signature | generated-artifact | recipe-only | wired | yes |
+| E2 | E | signature | generated-artifact | recipe-only | deferred | no (gated) |
 | E3 | E | deterministic | completed-effect | exact | wired | yes |
 | E4 | E | call-log | attempted-action | recipe-only | oracle-only | yes |
-| E5 | E | signature | generated-artifact | recipe-only | oracle-only | yes |
+| E5 | E | signature | generated-artifact | recipe-only | wired | yes |
 | H1 | H | registry | generated-artifact | recipe-only | conditional | yes |
 | H2 | H | reference | generated-artifact | recipe-only | conditional | yes |
 | H3 | H | nli | generated-artifact | recipe-only | conditional | yes |

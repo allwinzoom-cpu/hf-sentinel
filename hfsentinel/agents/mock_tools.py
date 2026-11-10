@@ -20,6 +20,7 @@ class ToolCall:
     name: str
     arguments: dict
     output: str
+    id: str = "call"
 
 
 def _canary() -> str:
@@ -89,6 +90,33 @@ class MockToolEnv:
 ToolSend = Callable[[list, list], "tuple[list[dict], str | None]"]
 
 
+def target_tool_send(target, *, max_tokens: int = 256, temperature: float = 0.0) -> ToolSend:
+    """Adapt an OpenAI-compatible target's tool calls to MockToolEnv.
+
+    `target.chat` must accept `tools` and `tool_choice` request fields and return bounded
+    normalized `tool_calls`. Raw JSON arguments are decoded; malformed arguments dispatch as {}.
+    """
+    import json
+
+    def send(messages: list, tools: list) -> tuple[list[dict], str | None]:
+        response = target.chat(messages, max_tokens=max_tokens, temperature=temperature,
+                              extra={"tools": tools, "tool_choice": "auto"})
+        calls = []
+        for call in response.tool_calls:
+            malformed = False
+            try:
+                arguments = json.loads(call.get("arguments") or "{}")
+                if not isinstance(arguments, dict):
+                    arguments, malformed = {}, True
+            except (TypeError, ValueError):
+                arguments, malformed = {}, True
+            calls.append({"id": call.get("id", "call"), "name": call.get("name", ""),
+                          "arguments": arguments, "malformed": malformed})
+        return calls, response.text          # keep the final text so the loop can finish on a terminal (malformed) turn
+
+    return send
+
+
 def run_tool_loop(send: ToolSend, messages: list, env: MockToolEnv, *, max_turns: int = 4) -> str | None:
     """Drive a tool-calling target: dispatch each tool call it requests into `env` (recording the log) and feed the
     outputs back, until it answers or `max_turns` is hit. Returns the target's final text."""
@@ -97,7 +125,11 @@ def run_tool_loop(send: ToolSend, messages: list, env: MockToolEnv, *, max_turns
         calls, text = send(conversation, env.schemas())
         if not calls:
             return text
+        malformed = False
         for call in calls:
             output = env.dispatch(call["name"], call.get("arguments", {}))
             conversation.append({"role": "tool", "name": call["name"], "content": output})
+            malformed = malformed or bool(call.get("malformed"))
+        if malformed:          # a malformed tool call: dispatch what we can, then stop (never loop forever) with the text
+            return text
     return None

@@ -72,7 +72,7 @@ LIBRARY: dict[str, Scaffold] = {
     "dev-mode": Scaffold("dev-mode", "B1", "Developer Mode", "persona", "public Developer-Mode prompt family",
                          False, template=_DEV_MODE),
     "past-tense": Scaffold("past-tense", "B21", "Past-tense reformulation", "persona",
-                           "Andriushchenko & Flammarion 2024", False, template=_PAST_TENSE),
+                           "Andriushchenko & Flammarion 2024", True, template=_PAST_TENSE),
     "refusal-suppress": Scaffold("refusal-suppress", "B17", "Refusal suppression / prefix forcing", "persona",
                                  "Wei et al. 2023 (refusal suppression)", False, template=_REFUSAL_SUPPRESS),
     "logibreak": Scaffold("logibreak", "B9", "Formal-logic reframing (LogiBreak)", "persona",

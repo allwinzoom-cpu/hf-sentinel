@@ -25,7 +25,10 @@ JUDGE_USD_CEILING = 25.0  # D-017: separate judge spend cap
 Category = Literal["A", "B", "C", "D", "E", "H"]
 Scan = Literal["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"]
 FuzzType = Literal["mutation", "template", "generative", "search", "replay", "composite"]
-Mutator = Literal["case", "shuffle", "typo", "base64", "leet", "homoglyph", "unicode-tag", "ascii-art", "flip", "cipher"]
+Mutator = Literal["case", "shuffle", "typo", "base64", "base32", "gzip-base64", "hex", "binary", "octal",
+                 "morse", "leet", "homoglyph", "unicode-tag", "invisible-text", "artprompt", "flip", "cipher",
+                 "unicode-inversion", "spelled-ascii", "balanced-brackets", "parseltongue-fullwidth",
+                 "decompose", "bijection", "percent", "html-entity", "json-escape", "zero-width"]
 JudgeName = Literal["ensemble", "rubric", "classifier", "guard", "nli", "deterministic"]
 Registry = Literal["pypi", "npm", "crates", "rubygems"]
 Format = Literal["md", "json", "sarif", "html", "card"]

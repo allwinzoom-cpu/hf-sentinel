@@ -19,6 +19,14 @@ TODAY = dt.date(2026, 11, 3)  # inside the fixture's 2026-11-01..2027-10-31 wind
 runner = CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _offline_secrets(monkeypatch, tmp_path):
+    """Scope dry-run tests use no local secret source."""
+    for name in ("HF_TOKEN", "hf_tok", "HF_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HFSENTINEL_ENV_FILE", str(tmp_path / "absent.env"))
+
+
 def sig(name):
     return (FIX / name).read_text()
 

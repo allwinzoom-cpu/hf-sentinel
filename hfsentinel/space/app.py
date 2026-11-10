@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from hfsentinel.controls import PROFILES, resolve_controls
 from hfsentinel.targets.resolve import parse, resolve
 
@@ -20,7 +22,8 @@ PRESETS: tuple[str, ...] = tuple(PROFILES)
 # The UI controls that bind to CLI flags (same names, so resolve_controls treats them identically to a CLI run).
 UI_FLAGS: tuple[str, ...] = ("profile", "categories", "trials", "temperature", "max_tokens", "rounds", "concurrency",
                              "budget_usd", "max_requests", "max_minutes", "memorization_refs", "api_reference",
-                             "halluc_registries", "check_citations", "check_sycophancy", "check_calibration", "nli_url")
+                             "halluc_registries", "check_citations", "check_sycophancy", "check_calibration", "nli_url",
+                             "mutators")
 
 
 def authorized(token: str | None, owners: tuple[str, ...]) -> bool:
@@ -36,8 +39,26 @@ def _token() -> str | None:
         return None
 
 
+def _autonomous_attacker(cli: str):
+    """Build the locally available adaptive attacker for the Space scan path (host-only)."""
+    from hfsentinel.agents.adaptive_attacker import cli_attacker
+    from hfsentinel.judges.cli_judge import available
+    return cli_attacker(cli) if available(cli) else None
+
+
+def _with_autonomous_attacker(controls, attacker):
+    """Return controls with the host-only adaptive attacker attached outside the serialized config model."""
+    try:
+        controls.autonomous = attacker  # type: ignore[attr-defined]
+        return controls
+    except ValidationError:
+        controls.__dict__["autonomous"] = attacker
+        return controls
+
+
 def run_scan(target_uri: str, flags: dict, *, scope_path: Path | None = None, signers_path: Path | None = None,
-             token: str | None = None, owners: tuple[str, ...] = (), out_dir: Path | None = None):
+            token: str | None = None, owners: tuple[str, ...] = (), out_dir: Path | None = None,
+            autonomous: bool = False, autonomous_cli: str = "claude"):
     """Run a scan from UI inputs and return the assembled Report — the same campaign path the CLI/`diff` use.
 
     `flags` carry the same names as the CLI options, so `resolve_controls` resolves them identically. `scope_path` +
@@ -45,9 +66,11 @@ def run_scan(target_uri: str, flags: dict, *, scope_path: Path | None = None, si
     """
     from hfsentinel import cli
     from hfsentinel.scope import authorize, load_allowed_signers, load_scope
+    controls = resolve_controls({k: v for k, v in flags.items() if v is not None}).controls
+    if autonomous:
+        controls = _with_autonomous_attacker(controls, _autonomous_attacker(autonomous_cli))
     if not authorized(token, owners):
         raise PermissionError("not an authorized owner")
-    controls = resolve_controls({k: v for k, v in flags.items() if v is not None}).controls
     target = resolve(parse(target_uri), token=_token())
     verified = load_scope(scope_path, signers=load_allowed_signers(signers_path)) if scope_path else None
     attestation = authorize(verified, target, resolved=True)
@@ -65,13 +88,16 @@ def build_ui(owners: tuple[str, ...] = ()):
     from hfsentinel.report import render
 
     def _launch(target_uri, profile, categories, trials, temperature, max_tokens, budget_usd, check_sycophancy,
-                check_calibration, scope_file, token):
+                check_calibration, use_parseltongue, use_autonomous, autonomous_cli, scope_file, token):
         flags = {"profile": profile, "categories": categories or None, "trials": int(trials),
                  "temperature": float(temperature), "max_tokens": int(max_tokens), "budget_usd": float(budget_usd),
                  "check_sycophancy": bool(check_sycophancy), "check_calibration": bool(check_calibration)}
+        if use_parseltongue:
+            flags["mutators"] = "base64,unicode-tag,invisible-text,base32,hex,parseltongue-fullwidth"
         try:
             report = run_scan(target_uri, flags, scope_path=(Path(scope_file) if scope_file else None),
-                              token=token or None, owners=owners)
+                              token=token or None, owners=owners, autonomous=bool(use_autonomous),
+                              autonomous_cli=autonomous_cli or "claude")
         except PermissionError:
             return "Refused: not an authorized owner.", "{}"
         except Exception as e:  # noqa: BLE001 — surface any scan error to the UI, never crash the app
@@ -92,13 +118,16 @@ def build_ui(owners: tuple[str, ...] = ()):
             budget_usd = gr.Slider(0.0, 20.0, value=5.0, step=0.5, label="Budget (USD, ≤20)")
             syco = gr.Checkbox(label="H5 sycophancy")
             calib = gr.Checkbox(label="H7 overconfidence")
+            parseltongue = gr.Checkbox(label="Parseltongue fullwidth runtime transform")
+            autonomous = gr.Checkbox(label="Autonomous B7 adaptive attacker")
+            autonomous_cli = gr.Radio(["claude", "codex"], value="claude", label="Attacker CLI")
         scope_file = gr.File(label="Signed scope file (non-loopback targets)", type="filepath")
         token = gr.Textbox(label="Owner token", type="password")
         run = gr.Button("Run scan", variant="primary")
         grade_out = gr.Textbox(label="Result", interactive=False)
         json_out = gr.Code(label="Report (JSON)", language="json")
         run.click(_launch, [target, profile, categories, trials, temperature, max_tokens, budget_usd, syco, calib,
-                            scope_file, token], [grade_out, json_out])
+                            parseltongue, autonomous, autonomous_cli, scope_file, token], [grade_out, json_out])
     return ui.queue()  # 664: serialize scans so one run cannot starve others
 
 

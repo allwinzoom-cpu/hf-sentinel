@@ -6,13 +6,13 @@ import re
 from hfsentinel.attacks import scaffolds
 from hfsentinel.attacks.canary import CanaryRun
 from hfsentinel.attacks.mutators import bijection_decode
-
-_TOKEN = re.compile(r"[A-Z0-9]{4}(?:-[A-Z0-9]{4})+")  # the canary shape (4-char groups)
 from hfsentinel.core.system_one import Decision
 from hfsentinel.engines.campaign import CampaignResult, _scaffold_stage
 from hfsentinel.engines.governor import Governor, Ledger
 from hfsentinel.engines.planner import Plan, PlanStep
 from hfsentinel.targets.resolve import parse
+
+_TOKEN = re.compile(r"[A-Z0-9]{4}(?:-[A-Z0-9]{4})+")  # the canary shape (4-char groups)
 
 PLAN = Plan(parse("openai+http://127.0.0.1:8000/v1#m"), 1,
             (PlanStep("B16", "FlipAttack", "run", None), PlanStep("B14", "Bijection learning", "run", None),
@@ -74,8 +74,8 @@ def _gov():
 
 
 def test_library_scoping():
-    assert set(scaffolds.SCORED) == {"B16", "B14", "B6"}
-    assert {s.catalog_id for s in scaffolds.scored_scaffolds()} == {"B16", "B14", "B6"}
+    assert set(scaffolds.SCORED) == {"B16", "B14", "B6", "B21"}
+    assert {s.catalog_id for s in scaffolds.scored_scaffolds()} == {"B16", "B14", "B6", "B21"}
     # persona families are public, catalog-mapped, and never graded here
     personas = {s.name for s in scaffolds.persona_scaffolds()}
     assert {"DAN (Do Anything Now)", "AIM", "Developer Mode",

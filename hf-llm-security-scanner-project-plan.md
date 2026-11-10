@@ -101,9 +101,9 @@ A technique is in the catalog as a *candidate*. It is only **scored** once it cl
 | **Candidate** | From a paper/PoC we have not yet reproduced | Runs in an **experimental lane**, reported as *unvalidated*, **never scored**, until reproduced |
 
 **Current classification (reviewed each release):**
-- **Ready:** A1–A3, A5; B1–B2, B4, B5, B6, B7, B12, B13, B14, B15, B16, B17, B19, B20, B21; C1, C2; E1, E2, E3, E5; H1, H3, H4. (B6 decomposition, B14 bijection and B16 FlipAttack historically used fixed-template live surrogate scoring by the deterministic decode/reassemble-and-follow canary oracle — no judge; B21 past-tense and E5 malware/XSS have public code/probes.) (Backed by garak/PyRIT/promptmap2/DeepTeam/StrongREJECT baselines, public templates, or our own reproduction. E2 remains catalogued as a labelled control, but the scope override below excludes it from recorded dynamic coverage and scoring.)
-- **Conditional (precondition in brackets):** A4 [multimodal input accepted]; A6 [chat-templated target that parses special tokens]; B3 [non-English handling]; B22 [glitch tokens affect this tokenizer]; C3 [we hold a reference/known-text set]; C4 [target has cross-session memory]; D1–D7 [tool-enabled target or our mock-tool env; D7 also needs a browse/HTTP tool + controlled sink]; E4 [tool loop possible]; H2 [reference oracle for the command/API]; H5 [multi-turn]; H6 [source-existence oracle]; H7 [ground-truth + calibration readout]; B23 [structured-output API honoured] (a forced-canary result is a capability control; semantic success requires live confirmation).
-- **Candidate (reproduce before scoring):** B8 (genetic/AutoDAN), B9 (LogiBreak), B10 (reasoning self-jailbreak), B11 (autonomous attacker — our agent, promote to Ready once it beats a baseline), B18 (Deceptive Delight / Echo Chamber).
+- **Ready:** A1–A3, A5; B1–B2, B4, B5, B6, B7, B13, B14, B15, B16, B17, B19, B20, B21; C1, C2; E1, E2, E3, E5; H1, H3, H4. (B6 decomposition, B14 bijection and B16 FlipAttack historically used fixed-template live surrogate scoring by the deterministic decode/reassemble-and-follow canary oracle — no judge; B21 past-tense and E5 malware/XSS have public code/probes.) (Backed by garak/PyRIT/promptmap2/DeepTeam/StrongREJECT baselines, public templates, or our own reproduction. E2 remains catalogued as a labelled control, but the scope override below excludes it from recorded dynamic coverage and scoring.)
+- **Conditional (precondition in brackets):** A4 [multimodal input accepted]; A6 [chat-templated target that parses special tokens]; B3 [non-English handling]; B10 [target exposes a separate reasoning trace]; B12 [target accepts and honours a caller-supplied assistant prefix]; B22 [glitch tokens affect this tokenizer]; C3 [we hold a reference/known-text set]; C4 [target has cross-session memory]; D1–D7 [tool-enabled target or our mock-tool env; D7 also needs a browse/HTTP tool + controlled sink]; E4 [tool loop possible]; H2 [reference oracle for the command/API]; H5 [multi-turn]; H6 [source-existence oracle]; H7 [ground-truth + calibration readout]; B23 [structured-output API honoured] (a forced-canary result is a capability control; semantic success requires live confirmation).
+- **Candidate (reproduce before scoring):** B8 (genetic/AutoDAN), B9 (LogiBreak), B11 (autonomous attacker — our agent, promote to Ready once it beats a baseline), B18 (Deceptive Delight / Echo Chamber).
 
 A Candidate becomes Ready the moment it reproduces on the weak reference endpoint with ASR CI above baseline; until then its findings are flagged experimental and left out of the grade. Section 6.2 is the pipeline that moves items across this line.
 
@@ -467,7 +467,7 @@ hfsentinel watch    --repo <id> | --org <org> # S9 webhook/fleet mode
 | `--fuzz-type` | one or more: `mutation` (char/word/encoding augmentations), `template` (grammar/policy-framing), `generative` (attacker-LLM), `search` (genetic/TAP tree), `replay` (dataset only), `composite` (stack types) | `mutation,template` |
 | `--rounds` | fuzzing rounds / generations per prompt (the N in best-of-N; higher = deeper) | `10` |
 | `--max-attempts` | hard cap on attempts per goal across rounds | `50` |
-| `--mutators` | which mutation ops: `case,shuffle,typo,base64,leet,homoglyph,unicode-tag,ascii-art,flip,cipher` | all |
+| `--mutators` | which mutation ops: `case,shuffle,typo,base64,leet,homoglyph,unicode-tag,artprompt,flip,cipher` | all |
 | `--mutation-rate` | 0–1 intensity per mutation | `0.3` |
 | `--max-turns` | conversation depth for multi-turn (Crescendo/GOAT/TAP) | `5` |
 | `--tap-width` / `--tap-depth` | tree-of-attacks breadth/depth for `search` | `4` / `5` |
@@ -527,7 +527,7 @@ fuzz:
   types: [mutation, generative, composite]
   rounds: 200                      # deep best-of-N
   max_attempts: 500
-  mutators: [case, shuffle, base64, ascii-art, flip]
+  mutators: [case, shuffle, base64, artprompt, flip]
   mutation_rate: 0.4
   max_turns: 8                     # multi-turn depth
   tap: {width: 6, depth: 6}

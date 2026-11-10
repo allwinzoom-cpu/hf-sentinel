@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -13,6 +14,15 @@ from hfsentinel import cli
 
 ACTION = Path(__file__).resolve().parents[1] / "action.yml"
 SHA40 = re.compile(r"@[0-9a-f]{40}$")
+runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _offline_secrets(monkeypatch, tmp_path):
+    """Dry-run gate checks are deterministic and use no local secrets."""
+    for name in ("HF_TOKEN", "hf_tok", "HF_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HFSENTINEL_ENV_FILE", str(tmp_path / "absent.env"))
 
 
 def _action() -> dict:

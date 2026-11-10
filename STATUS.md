@@ -8,6 +8,27 @@ build → verify in Linux containers (D-009) → tick + log here.
 **Current phase:** 0 — Foundations (human-gated remainder) · Phase 1 paused · working Phase 2 · 55/71 tasks ticked (77.5%)
 
 ## Done
+- **SDK + FastAPI layer (2026-11-10).** New `hfsentinel/sdk.py`: programmatic `scan(target, ...) -> ScanResult` wrapping
+  the full pipeline (scope auth → recon → plan → campaign → report) with every advanced control defaulted; deny-by-default
+  scope (no signed scope file ⇒ only built-in safe targets), dynamic-only, zero new dependencies. New optional `hfsentinel/
+  api/` (FastAPI, behind the `api` extra — core imports without it): async-job model (`POST /scans` → 202 + job_id on a
+  bounded thread pool, `GET /scans/{id}` to poll), API-key bearer auth + per-key rate limiting, a CURATED `ScanRequest`
+  (only the very-needed knobs; scope/credentials configured server-side, never per request — no path traversal), launch via
+  `python -m hfsentinel.api`. Verified: SDK 5/5 (incl. real end-to-end vuln-target scan + extended pass), API 5 stdlib
+  local + 6 TestClient on Linux; all new files ruff-0.17.3 clean.
+- **Scanning-accuracy + wiring pass (2026-11-09).** Fixed scanning-accuracy bugs: obfuscation `build_attack` now rejects
+  non-reversible encodings (was a guaranteed false negative; `candidate_encodings` reversible-only); D5 memory-poison now
+  actually delivers its poisoned prior context; D-category/E4/D7 agentic stages re-run `TOOL_CONFIRM_TRIALS=3` and grade at
+  the §2.2 reproduction bar (were capped at Info); E4 loop oracle now uses the registered per-tool `exceeds_loop_cap`
+  (was an off-by-one total count); morse decode-hint matches the encoder; planner encoding-mutator set is canary-preserving
+  only; `controls.Mutator` `ascii-art`→`artprompt` + missing keys; `cross_session`/`glitch` now gate their stages.
+  **Wiring:** the 4 Laya stages are reachable (`--check-triggered/-obfuscation/-evolution/-minimization`); all 26 orphaned
+  capability modules (8 agentic D-cores, 13 attack-discipline, 5 standalone engines) are invoked via a new `--extended`
+  pass (`engines/extended_base.py` + `extended_{agentic,attacks,engines}.py`, `campaign._extended_stages`), each reporting
+  an honest advisory verdict or N/A — never a duplicate scored run, never a manufactured finding. Agentic stages use **Laya
+  as the transaction classifier** (advisory; module deterministic oracle is the labelled fallback when Laya is
+  unavailable), never hard-coded regex. Reachability sweep: no scanning *technique* left orphaned; direct-provider target
+  adapters remain the documented offline contracts (await live keys).
 - (baseline) `test_plan.py` 17/17 green.
 - P0 · Freeze catalog v0 — `hfsentinel/attacks/catalog.yaml` (52 rows), pydantic schema, ATLAS 5.6.0 ID check, plan cross-check; 11/11 pytest.
 - P0 · Confirm header assumptions — D-001..D-008 accepted by owner.

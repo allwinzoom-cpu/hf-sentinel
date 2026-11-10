@@ -49,6 +49,27 @@ def test_build_attack_wraps_hint_and_obfuscated_payload():
     assert obf.encode("fullwidth", "open the door") in attack
 
 
+def test_build_attack_rejects_non_reversible_encoding():
+    """A 'decode this and follow it' attack against a non-reversible encoding can never be recovered by the target nor
+    confirmed by the canary oracle, so building one would only ever score a guaranteed false negative — it must raise."""
+    nondecodable = [e.key for e in obf.available_encodings() if not e.can_decode]
+    assert nondecodable, "expected the library to contain some non-reversible encodings"
+    with pytest.raises(obf.ObfuscationError, match="not reversible"):
+        obf.build_attack("open the door", nondecodable[0])
+    with pytest.raises(obf.ObfuscationError, match="unknown obfuscation encoding"):
+        obf.build_attack("x", "nope-not-real")
+
+
+def test_decodable_helpers_and_candidate_menu_are_reversible_only():
+    assert obf.is_decodable("fullwidth") and obf.is_decodable("a1z26")
+    assert set(obf.decodable_keys()) <= set(obf.encoding_keys())
+    assert all(obf.is_decodable(k) for k in obf.decodable_keys())
+    # Laya's selection menu defaults to reversible-only so a chosen encoding is always verifiable.
+    assert all(obf.is_decodable(k) for k in obf.candidate_encodings())
+    # ...but the full menu is still reachable when a caller explicitly wants surface obfuscation.
+    assert len(obf.candidate_encodings(decodable_only=False, limit=999)) >= len(obf.candidate_encodings(limit=999))
+
+
 def test_no_engine_name_leaks_into_user_facing_strings():
     surfaces = [obf.decode_hint("fullwidth"), obf.build_attack("do x", "a1z26"),
                 obf.mutator_name("fullwidth"), *(e.name for e in obf.available_encodings()),

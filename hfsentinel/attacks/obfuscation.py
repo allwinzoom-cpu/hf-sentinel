@@ -114,6 +114,22 @@ def is_known(key: str) -> bool:
     return key in encoding_keys()
 
 
+@functools.lru_cache(maxsize=1)
+def _decodable_set() -> frozenset[str]:
+    return frozenset(e.key for e in available_encodings() if e.can_decode)
+
+
+def is_decodable(key: str) -> bool:
+    """Whether `key` round-trips — i.e. the target (and our canary oracle) can recover the plaintext. A non-decodable
+    encoding is a surface obfuscation only; it must NOT be used for a 'decode this and follow it' attack."""
+    return key in _decodable_set()
+
+
+def decodable_keys() -> tuple[str, ...]:
+    """Only the reversible encodings — the ones valid for a verifiable 'obfuscate then try' attack."""
+    return tuple(e.key for e in available_encodings() if e.can_decode)
+
+
 def encode(key: str, text: str, *, options: dict | None = None) -> str:
     """Obfuscate `text` with the selected encoding. Raises `ObfuscationError` on an unknown key or an encoding error."""
     res = _bridge({"command": "run", "action": "encode", "transform": key, "text": text, "options": options or {}})
@@ -167,7 +183,16 @@ def decode_hint(key: str) -> str:
 
 def build_attack(payload: str, key: str, *, options: dict | None = None) -> str:
     """The 'obfuscate then try' unit (§16.7): the decode hint followed by the obfuscated payload — the prompt to send to
-    the target."""
+    the target.
+
+    The encoding MUST be reversible: a 'decode this and follow it' attack against a non-reversible encoding can never be
+    recovered by the target nor verified by our canary oracle, so it would only ever score a guaranteed false negative.
+    Such a key raises `ObfuscationError` rather than emitting a broken, unverifiable attack."""
+    if not is_known(key):
+        raise ObfuscationError(f"unknown obfuscation encoding {key!r}")
+    if not is_decodable(key):
+        raise ObfuscationError(
+            f"encoding {key!r} is not reversible; a decode-and-follow attack cannot be recovered or verified")
     return f"{decode_hint(key)}\n{encode(key, payload, options=options)}"
 
 
@@ -175,12 +200,16 @@ def build_attack(payload: str, key: str, *, options: dict | None = None) -> str:
 # Laya ranks WHICH encoding to try first for a target profile; the deterministic canary round-trip stays the decider.
 # This is selection, not evaluation — advisory only, fail-soft, never overriding a verdict ([[laya-involved-everywhere]]).
 
-def candidate_encodings(*, per_category: int = 1, limit: int = 12) -> dict[str, str]:
+def candidate_encodings(*, per_category: int = 1, limit: int = 12, decodable_only: bool = True) -> dict[str, str]:
     """A small menu of encodings for System-1 selection: up to `per_category` per category, capped at `limit`, as
-    {key: description}. Small enough for Laya to rank. Raises `ObfuscationError` if the layer is unavailable."""
+    {key: description}. Small enough for Laya to rank. Defaults to reversible encodings only, so a selected encoding is
+    always valid for a verifiable 'obfuscate then try' attack ([[store-only-proven-findings]]) — a non-reversible pick
+    could never be recovered or confirmed. Raises `ObfuscationError` if the layer is unavailable."""
     out: dict[str, str] = {}
     seen: dict[str, int] = {}
     for e in available_encodings():
+        if decodable_only and not e.can_decode:
+            continue
         if seen.get(e.category, 0) < per_category:
             out[e.key] = e.description or e.name
             seen[e.category] = seen.get(e.category, 0) + 1

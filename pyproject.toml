@@ -22,6 +22,8 @@ hfsentinel = "hfsentinel.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest==8.4.1", "pre-commit==4.3.0"]
+# Optional HTTP API layer (hfsentinel.api). The core scanner never imports these; install with `pip install .[api]`.
+api = ["fastapi==0.115.6", "uvicorn==0.34.0"]
 
 [tool.setuptools.packages.find]
 include = ["hfsentinel*"]

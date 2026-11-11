@@ -200,6 +200,40 @@ def test_retries_count_against_request_cap(no_sleep):
     assert hits == [429, 429]
 
 
+def test_transport_error_is_retried_then_succeeds(no_sleep):
+    # A transient transport failure (connection reset / TLS blip / read timeout) is retried like a 5xx: the next attempt
+    # succeeds after a bounded backoff, so one network hiccup no longer aborts a trial.
+    from hfsentinel.targets.transport import Response, TransportError
+    calls = []
+
+    class FlakyTransport:
+        def request(self, method, url, *, headers, body, timeout, limit):
+            calls.append(1)
+            if len(calls) == 1:
+                raise TransportError("connection reset")
+            return Response(200, {}, json.dumps(OK_BODY).encode())
+
+    t = OpenAICompatTarget("https://x.test/v1", "m", transport=FlakyTransport())
+    assert t.chat([{"role": "user", "content": "x"}]).text == "pong"
+    assert len(calls) == 2 and no_sleep == [1.0] and t.requests_made == 2  # one retry, exp backoff, both metered
+
+
+def test_transport_error_retries_bounded_and_error_is_generic(no_sleep):
+    from hfsentinel.targets.transport import TransportError
+    calls = []
+
+    class DeadTransport:
+        def request(self, *a, **k):
+            calls.append(1)
+            raise TransportError("connection reset")
+
+    t = OpenAICompatTarget("https://x.test/v1", "m", api_key="hf_SECRETVALUE", retries=2, transport=DeadTransport())
+    with pytest.raises(TargetError) as ei:
+        t.chat([{"role": "user", "content": "x"}])
+    assert "hf_SECRETVALUE" not in str(ei.value)                  # the secret never leaks in the generic error
+    assert len(calls) == 3 and no_sleep == [1.0, 2.0]             # initial + 2 bounded retries, exponential backoff
+
+
 @pytest.mark.parametrize("hdr, attempt, expected", [("5", 0, 5.0), ("999", 0, 30.0), ("-1", 0, 0.0),
                                                     (None, 3, 8.0), ("Wed, 21 Oct 2026 07:28:00 GMT", 1, 2.0)])
 def test_backoff(hdr, attempt, expected):

@@ -279,11 +279,14 @@ def test_a6_corpus_covers_the_major_chat_template_families_and_is_well_formed():
     from hfsentinel.attacks.canary import A6_TEMPLATES
     # Each template forges a system turn with a real family's delimiters, formats the canary slot, and carries a distinct
     # lowercased marker (the echo guard) that is actually present in the rendered instruction.
-    assert len(A6_TEMPLATES) >= 9
+    assert len(A6_TEMPLATES) >= 12
     delimiters = "".join(t for t, _ in A6_TEMPLATES)
     for token in ("<|im_start|>", "[INST]", "<|start_header_id|>", "<start_of_turn>", "<|system|>",
-                  "[SYSTEM_PROMPT]", "<|message|>", "### Instruction:"):
+                  "[SYSTEM_PROMPT]", "<|message|>", "### Instruction:",
+                  "<｜begin▁of▁sentence｜>", "<|START_OF_TURN_TOKEN|>", "[gMASK]<sop>"):
         assert token in delimiters, token
+    markers = [m for _, m in A6_TEMPLATES]
+    assert len(set(markers)) == len(markers)  # each family carries a distinct echo-guard marker
     for tmpl, marker in A6_TEMPLATES:
         rendered = tmpl.format(c="K7QM-2XPA-3RTD-H4WB")
         assert "K7QM-2XPA-3RTD-H4WB" in rendered and marker and marker in rendered.lower()

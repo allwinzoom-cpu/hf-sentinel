@@ -158,69 +158,76 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         progress(run)
         if not run.complete:
             break  # a budget cap stopped the sweep; later techniques are reported as not run
-    if reference_set:
-        _memorization_stage(res, target, gov, reference_set=reference_set, max_tokens=max_tokens, seed=seed,
-                            keep_transcripts=keep_transcripts)
-    if halluc_ecosystems:
-        _hallucination_stage(res, target, ecosystems=halluc_ecosystems, max_tokens=max_tokens)
-    if api_reference:
-        _fabricated_api_stage(res, target, known_apis=api_reference, max_tokens=max_tokens)
-    if check_citations:
-        _fabricated_citation_stage(res, target, max_tokens=max_tokens)
-    if check_sycophancy:
-        _sycophancy_stage(res, target, max_tokens=max_tokens)
-    if check_calibration:
-        _overconfidence_stage(res, target, max_tokens=max_tokens)
-    if nli_scorer is not None:
-        _nli_stage(res, target, scorer=nli_scorer, max_tokens=max_tokens)
-    if check_abliteration:
-        _abliteration_stage(res, target, max_tokens=max_tokens)
-    _c1_stage(res, target, plan, max_tokens=max_tokens, seed=seed)
-    if cross_session:
-        _c4_stage(res, target, plan, profile=profile, max_tokens=max_tokens)
-    if glitch:
-        _glitch_stage(res, target, plan, max_tokens=max_tokens, seed=seed)
-    if tools:
-        _tool_campaign(res, target, plan, max_tokens=max_tokens)
-    _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
-                    max_tokens=max_tokens, concurrency=concurrency, seed=seed,
-                    mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
-    if check_obfuscation:
-        _obfuscation_stage(res, target, profile=profile, max_tokens=max_tokens, seed=seed, system_one=s1)
-    if check_triggered:
-        _triggered_stage(res, target, profile=profile, max_tokens=max_tokens, seed=seed, system_one=s1)
-    if check_evolution:
-        _evolution_stage(res, profile=profile, system_one=s1)
-    if check_minimization:
-        _minimization_stage(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
-                            concurrency=concurrency, seed=seed, profile=profile, system_one=s1)
-    if extended:
-        _extended_stages(res, target, plan, profile=profile, max_tokens=max_tokens, system_one=s1, seed=seed)
-    _scaffold_stage(res, target, gov, canaries, plan=plan, trials=trials, max_tokens=max_tokens, seed=seed,
-                    system_one=s1, keep_transcripts=keep_transcripts)
-    _multiturn_stage(res, target, plan=plan, max_tokens=max_tokens, system_one=s1)
-    if adaptive_attacker is not None:
-        _adaptive_stage(res, target, attacker=adaptive_attacker, max_turns=adaptive_turns, max_tokens=max_tokens,
-                        seed=seed)
-        _adaptive_tree_stage(res, target, attacker=adaptive_attacker, max_turns=adaptive_turns,
-                            max_tokens=max_tokens, seed=seed)
-        _autonomous_reasoning_stage(res, target, plan, attacker=adaptive_attacker, max_turns=adaptive_turns,
-                                   max_tokens=max_tokens, seed=seed)
-    _genetic_search_stage(res, target, plan, max_tokens=max_tokens, seed=seed)
-    _strategy_discovery_stage(res, target, plan, max_tokens=max_tokens, seed=seed, library=library)
-    _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
-                  concurrency=concurrency, seed=seed)
-    _judge_confirm(res, panel, s1, judge_candidates or [])
-    if jailbreak_goals:
-        _jailbreak_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
-                               max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
-        _many_shot_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
-                               max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
-    _cda_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
-    _reasoning_self_attack_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
-    _active_output_stage(res, target, plan, seed=seed, max_tokens=max_tokens)
-    _prefill_stage(res, target, plan, profile=profile, canaries=canaries, max_tokens=max_tokens)
-    _many_shot_delivery_stage(res, target, plan, canaries=canaries, seed=seed, max_tokens=max_tokens)
+    # Budget/time exhaustion is the normal end of a long scan and can fire inside any post-sweep stage. Catch it at
+    # the orchestration boundary so the scan always finalizes a partial report instead of aborting mid-stage; once
+    # the ledger is exhausted every further target call raises immediately, so there is nothing to gain by going on.
+    try:
+        if reference_set:
+            _memorization_stage(res, target, gov, reference_set=reference_set, max_tokens=max_tokens, seed=seed,
+                                keep_transcripts=keep_transcripts)
+        if halluc_ecosystems:
+            _hallucination_stage(res, target, ecosystems=halluc_ecosystems, max_tokens=max_tokens)
+        if api_reference:
+            _fabricated_api_stage(res, target, known_apis=api_reference, max_tokens=max_tokens)
+        if check_citations:
+            _fabricated_citation_stage(res, target, max_tokens=max_tokens)
+        if check_sycophancy:
+            _sycophancy_stage(res, target, max_tokens=max_tokens)
+        if check_calibration:
+            _overconfidence_stage(res, target, max_tokens=max_tokens)
+        if nli_scorer is not None:
+            _nli_stage(res, target, scorer=nli_scorer, max_tokens=max_tokens)
+        if check_abliteration:
+            _abliteration_stage(res, target, max_tokens=max_tokens)
+        _c1_stage(res, target, plan, max_tokens=max_tokens, seed=seed)
+        if cross_session:
+            _c4_stage(res, target, plan, profile=profile, max_tokens=max_tokens)
+        if glitch:
+            _glitch_stage(res, target, plan, max_tokens=max_tokens, seed=seed)
+        if tools:
+            _tool_campaign(res, target, plan, max_tokens=max_tokens)
+        _depth_escalate(res, target, gov, canaries, profile=profile, trials=trials, temperature=temperature,
+                        max_tokens=max_tokens, concurrency=concurrency, seed=seed,
+                        mutators=allowed_mutators(controls), keep_transcripts=keep_transcripts)
+        if check_obfuscation:
+            _obfuscation_stage(res, target, profile=profile, max_tokens=max_tokens, seed=seed, system_one=s1)
+        if check_triggered:
+            _triggered_stage(res, target, profile=profile, max_tokens=max_tokens, seed=seed, system_one=s1)
+        if check_evolution:
+            _evolution_stage(res, profile=profile, system_one=s1)
+        if check_minimization:
+            _minimization_stage(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
+                                concurrency=concurrency, seed=seed, profile=profile, system_one=s1)
+        if extended:
+            _extended_stages(res, target, plan, profile=profile, max_tokens=max_tokens, system_one=s1, seed=seed)
+        _scaffold_stage(res, target, gov, canaries, plan=plan, trials=trials, max_tokens=max_tokens, seed=seed,
+                        system_one=s1, keep_transcripts=keep_transcripts)
+        _multiturn_stage(res, target, plan=plan, max_tokens=max_tokens, system_one=s1)
+        if adaptive_attacker is not None:
+            _adaptive_stage(res, target, attacker=adaptive_attacker, max_turns=adaptive_turns, max_tokens=max_tokens,
+                            seed=seed)
+            _adaptive_tree_stage(res, target, attacker=adaptive_attacker, max_turns=adaptive_turns,
+                                max_tokens=max_tokens, seed=seed)
+            _autonomous_reasoning_stage(res, target, plan, attacker=adaptive_attacker, max_turns=adaptive_turns,
+                                       max_tokens=max_tokens, seed=seed)
+        _genetic_search_stage(res, target, plan, max_tokens=max_tokens, seed=seed)
+        _strategy_discovery_stage(res, target, plan, max_tokens=max_tokens, seed=seed, library=library)
+        _cross_verify(res, target, gov, canaries, trials=trials, temperature=temperature, max_tokens=max_tokens,
+                      concurrency=concurrency, seed=seed)
+        _judge_confirm(res, panel, s1, judge_candidates or [])
+        if jailbreak_goals:
+            _jailbreak_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
+                                   max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
+            _many_shot_judge_stage(res, target, panel=panel, system_one=s1, goals=jailbreak_goals,
+                                   max_tokens=max_tokens, seed=seed, keep_transcripts=keep_transcripts)
+        _cda_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
+        _reasoning_self_attack_stage(res, target, plan, profile=profile, seed=seed, max_tokens=max_tokens)
+        _active_output_stage(res, target, plan, seed=seed, max_tokens=max_tokens)
+        _prefill_stage(res, target, plan, profile=profile, canaries=canaries, max_tokens=max_tokens)
+        _many_shot_delivery_stage(res, target, plan, canaries=canaries, seed=seed, max_tokens=max_tokens)
+    except BudgetExceeded:
+        res.decide("S3", "*", "budget/time reached",
+                   "stopped remaining stages on budget exhaustion; finalizing a partial report")
     if library is not None:
         _learn(res, library, profile)
     # requests_saved compares the real cost against running every recorded technique to its full planned trials with no

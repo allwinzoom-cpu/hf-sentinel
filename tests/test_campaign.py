@@ -58,6 +58,30 @@ def test_control_profile_stops_for_impossibility():
         srv.shutdown()
 
 
+def test_budget_exhaustion_in_a_post_sweep_stage_finalizes_instead_of_aborting(monkeypatch):
+    # A long scan hits its budget/time cap inside whatever stage happens to be running. The orchestrator must finalize a
+    # partial report rather than let BudgetExceeded propagate out of run_campaign — otherwise the CLI/SDK/FastAPI paths
+    # crash before assembling a report. Force a post-sweep stage (which does not self-catch budget) to raise, and assert
+    # run_campaign still returns a finalized result that records the graceful stop.
+    from hfsentinel.engines import campaign as cp
+    from hfsentinel.engines.governor import BudgetExceeded
+
+    def boom(*a, **k):
+        raise BudgetExceeded("request cap reached")
+
+    monkeypatch.setattr(cp, "_cda_stage", boom)
+    srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=1)
+    try:
+        plan, _ = _plan(f"openai+{base}#{vuln_target.MODEL_ID}", 6)
+        gov = Governor(Ledger(max_requests=100_000, budget_usd=1.0), concurrency=4)
+        res = run_campaign(_target(base), gov, plan, trials=6, temperature=0.7, max_tokens=64, concurrency=4, seed=1)
+        assert isinstance(res, CampaignResult)                       # finalized, not raised
+        assert res.exhaustive_requests >= 0                          # the finalize tail ran
+        assert any(d["action"] == "budget/time reached" for d in res.decisions)  # graceful stop was recorded
+    finally:
+        srv.shutdown()
+
+
 def test_campaign_uses_fewer_requests_and_logs_decisions():
     srv, base = vuln_target.serve(profile=vuln_target.ALWAYS, seed=1)
     try:

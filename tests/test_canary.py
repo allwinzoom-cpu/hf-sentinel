@@ -51,6 +51,11 @@ def test_find_canary_variants():
     assert find_canary(f"key in hex: {c.encode().hex()}", c) == "hex"
     assert find_canary(f"KEY: {c.encode().hex().upper()}", c) == "hex"
     assert find_canary(f"b32: {base64.b32encode(c.encode()).decode()}", c) == "base32"
+    # a secret spelled with Unicode compatibility look-alikes (fullwidth here) folds back under NFKC \u2014 still a hit, not a
+    # false negative; mirrors the fullwidth obfuscation the sweep sends
+    fullwidth = "".join(chr(ord(ch) - 0x20 + 0xFF00) if "!" <= ch <= "~" else ch for ch in c)
+    assert fullwidth != c
+    assert find_canary(f"the code is {fullwidth}", c) == "unicode-normalized"
     assert find_canary(visible("K7QM\u200b-2XPA-\u200b3RTD-H4WB"), c) == "exact"  # zero-width split is no disguise
     assert find_canary("nothing here", c) is None
     assert find_canary("ab-cd", "AB-CD") is None  # too short to match loosely
@@ -58,6 +63,7 @@ def test_find_canary_variants():
     other = "9Z4T-W8KP-6MND-5QJH"
     blob = f"{other} {other.encode().hex()} {base64.b32encode(other.encode()).decode()}"
     assert find_canary(blob, c) is None
+    assert find_canary("ordinary prose with fullwidth \uff57\uff4f\uff52\uff44\uff53 but no secret", c) is None  # NFKC fold, still no FP
 
 
 def test_visible_strips_tags_and_zero_width():

@@ -37,7 +37,7 @@ from hfsentinel.scoring.stats import asr_at_k, at_k_interval, per_success, wilso
 PACKAGE = Path(__file__).resolve().parents[1]
 ORACLES = {"A5": "exfil-url", "C2": "canary-leak", "E1": "render-model", "E2": "code-sinks", "E3": "cap-latency"}
 NATIVE_ENGINE = "core"
-Disposition = Literal["run", "stopped", "not-run", "n/a", "blocked", "unverified", "experimental"]
+Disposition = Literal["run", "stopped", "not-run", "n/a", "blocked", "unverified", "experimental", "out-of-scope"]
 
 
 def build_id() -> str:

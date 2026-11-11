@@ -57,10 +57,21 @@ def test_status_matches_plan_gate(catalog, plan):
     assert filtered == expected
 
 
-def test_scope_excluded_e2_is_not_claimed_as_dynamic_coverage():
+def test_scope_excluded_e_ids_are_deferred_and_never_planned():
+    # Scope override: insecure-output (E1), static-codegen (E2), unbounded-generation (E3) and recursive-tool-loop (E4)
+    # are out of the model-compromise/jailbreak/leak/harmful-content scope. They are recorded deferred with a "scope
+    # override" reason, and the planner holds them n/a with zero requests (never planned or run). E5 stays in scope.
     caps = json.loads((Path(__file__).resolve().parents[1] / "engines" / "capabilities.json").read_text())
-    assert caps["status"]["E2"] == "deferred"
-    assert caps["deferred_reasons"]["E2"] == "scope override: static generated-code analysis excluded (LSCAN-072)"
+    from hfsentinel.engines.planner import SCOPE_EXCLUDED, build_plan
+    from hfsentinel.targets.resolve import parse
+    assert SCOPE_EXCLUDED == {"E1", "E2", "E3", "E4"} and "E5" not in SCOPE_EXCLUDED
+    for cid in SCOPE_EXCLUDED:
+        assert caps["status"][cid] == "deferred"
+        assert caps["deferred_reasons"][cid].startswith("scope override:")
+    assert caps["status"]["E5"] == "wired"  # harmful/exploit-code generation kept in scope
+    steps = {s.catalog_id: s for s in build_plan(parse("openai+http://127.0.0.1:1/v1#m")).steps}
+    for cid in SCOPE_EXCLUDED:
+        assert steps[cid].disposition == "out-of-scope" and steps[cid].requests == 0, cid
 
 
 def _raw():

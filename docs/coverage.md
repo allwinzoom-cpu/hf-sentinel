@@ -27,7 +27,7 @@ Generated from `engines/capabilities.json` by `engines/coverage_matrix.py` (plan
 
 ## Catalog accounting
 
-All 52 catalog IDs accounted for · conditional: 15 · deferred: 6 · engine-wired: 2 · experimental: 4 · oracle-only: 10 · wired: 15
+All 52 catalog IDs accounted for · conditional: 15 · deferred: 9 · engine-wired: 2 · experimental: 4 · oracle-only: 9 · wired: 13
 
 | ID | Owner | Capability | Status | Note |
 |---|---|---|---|---|
@@ -71,10 +71,10 @@ All 52 catalog IDs accounted for · conditional: 15 · deferred: 6 · engine-wir
 | D5 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool-enabled target or mock-tool env (oracle tested via fixtures) |
 | D6 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: multi-agent target or mock-tool env (oracle tested via fixtures) |
 | D7 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: browse/HTTP tool + controlled sink (oracle tested via fixtures) |
-| E1 | `built-by-us` | active-content-and-resource-oracles | wired |  |
+| E1 | `built-by-us` | active-content-and-resource-oracles | deferred | scope override: insecure/executable-output generation excluded (not a model-compromise/jailbreak/leak/harmful-content outcome) |
 | E2 | `guard-suite` | insecure-code-scanner | deferred | scope override: static generated-code analysis excluded (LSCAN-072) |
-| E3 | `built-by-us` | active-content-and-resource-oracles | wired |  |
-| E4 | `built-by-us` | agentic-tool-abuse-oracles | oracle-only | runtime: tool loop possible (native loop-cap oracle tested via fixtures) |
+| E3 | `built-by-us` | active-content-and-resource-oracles | deferred | scope override: unbounded-generation / token-exhaustion (DoS) excluded (not a model-compromise outcome) |
+| E4 | `built-by-us` | agentic-tool-abuse-oracles | deferred | scope override: recursive-tool-loop resource-exhaustion (DoS) excluded (not a model-compromise outcome) |
 | E5 | `built-by-us` | active-content-and-resource-oracles | wired | wired: live generated-output render stage; code-fenced and harmless detector strings are not hits |
 | H1 | `built-by-us` | hallucination-oracles | conditional | scan stage via --halluc-registries (live registry check) |
 | H2 | `built-by-us` | hallucination-oracles | conditional | scan stage via --api-reference (operator known-API set) |
@@ -86,7 +86,7 @@ All 52 catalog IDs accounted for · conditional: 15 · deferred: 6 · engine-wir
 
 ## Gaps — no reliable coverage yet (task 600)
 
-10 technique(s) not reliably runnable today; each maps to a Phase-3/4 ticket (its reason).
+13 technique(s) not reliably runnable today; each maps to a Phase-3/4 ticket (its reason).
 
 | ID | Owner | Status | Ticket / reason |
 |---|---|---|---|
@@ -99,4 +99,7 @@ All 52 catalog IDs accounted for · conditional: 15 · deferred: 6 · engine-wir
 | B18 | `probe-suite` | experimental | candidate; experimental, reproduce in 646 |
 | B19 | `probe-suite` | deferred | garak static-breadth / templated battery (641) wiring pending |
 | B20 | `orchestrator` | deferred | PyRIT strategy-discovery wiring pending |
+| E1 | `built-by-us` | deferred | scope override: insecure/executable-output generation excluded (not a model-compromise/jailbreak/leak/harmful-content outcome) |
 | E2 | `guard-suite` | deferred | scope override: static generated-code analysis excluded (LSCAN-072) |
+| E3 | `built-by-us` | deferred | scope override: unbounded-generation / token-exhaustion (DoS) excluded (not a model-compromise outcome) |
+| E4 | `built-by-us` | deferred | scope override: recursive-tool-loop resource-exhaustion (DoS) excluded (not a model-compromise outcome) |

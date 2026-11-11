@@ -216,7 +216,8 @@ def _print_plan(plan: Plan) -> None:
         typer.echo(f"  note      {_clean(note, 300)}")
     typer.echo(f"catalog   v{plan.catalog_version} · {len(plan.steps)} attacks: {plan.count('run')} run · "
                f"{plan.count('experimental')} experimental (not scored) · {plan.count('unverified')} unverified · "
-               f"{plan.count('blocked')} blocked · {plan.count('n/a')} n/a")
+               f"{plan.count('blocked')} blocked · {plan.count('n/a')} n/a · "
+               f"{plan.count('out-of-scope')} out-of-scope")
     typer.echo("recon     " + ("profile applied" if plan.recon else "not run — conditional attacks stay unverified "
                                                                        "(scan --dry-run --recon)"))
     feats = getattr(plan.profile, "features", None) if plan.profile is not None else None

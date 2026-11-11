@@ -58,9 +58,10 @@ def test_resolve_prints_plan():
     for a in cat.attacks:
         assert re.search(rf"^\s*\d+ {a.id}\s", out, re.MULTILINE), a.id
     m = re.search(r"(\d+) attacks: (\d+) run · (\d+) experimental \(not scored\) · (\d+) unverified · "
-                  r"(\d+) blocked · (\d+) n/a", out)
+                  r"(\d+) blocked · (\d+) n/a · (\d+) out-of-scope", out)
     assert m and int(m[1]) == len(cat.attacks) == sum(int(x) for x in m.groups()[1:])
     assert int(m[6]) == 0  # nothing is n/a without recon: absence of a capability must be observed
+    assert int(m[7]) == 4  # E1/E2/E3/E4 are scope-excluded (out-of-scope) regardless of recon
     assert "recon     not run" in out
     for row, disposition in (("A1", "run"), ("B12", "unverified"), ("D1", "unverified"), ("C3", "blocked"),
                              ("D7", "blocked"), ("B6", "run"), ("B8", "experimental")):

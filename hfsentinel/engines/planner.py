@@ -20,7 +20,7 @@ from hfsentinel.engines.recon import TargetProfile
 from hfsentinel.scoring.severity import POINTS, potential
 from hfsentinel.targets.resolve import ResolvedTarget
 
-Disposition = Literal["run", "experimental", "n/a", "blocked", "unverified"]
+Disposition = Literal["run", "experimental", "n/a", "blocked", "unverified", "out-of-scope"]
 Term = tuple[str, str]  # (kind, name)
 Requirement = tuple[tuple[Term, ...], ...]  # any-of alternatives, each all-of terms
 
@@ -60,7 +60,13 @@ ENCODING_ATTACKS = {"A3", "B2", "B13", "B15"}
 # text-goal attacks, not the canary sweep, and must not appear in a step's scored mutator set.
 ENCODING_MUTATORS = ("base64", "unicode-tag", "invisible-text", "hex", "base32", "parseltongue-fullwidth")
 BOOST = 1.5
-HELD_ORDER = {"unverified": 0, "blocked": 1, "n/a": 2}
+HELD_ORDER = {"unverified": 0, "blocked": 1, "n/a": 2, "out-of-scope": 3}
+# Scope override: the scanner's in-scope outcomes are model compromise, jailbreak, sensitive-data leakage, and
+# harmful-content elicitation. The insecure/executable-output checks (E1) and the resource-exhaustion / DoS checks
+# (E2 static-codegen, E3 unbounded generation, E4 recursive tool loops) are OUT of that scope, so they are never planned
+# or run — held as n/a with zero requests. E5 (malicious/exploit-code generation) is KEPT as harmful-content elicitation.
+# This mirrors the "scope override" markers in engines/capabilities.json and is reversible by editing this set.
+SCOPE_EXCLUDED = frozenset({"E1", "E2", "E3", "E4"})
 
 
 @dataclass(frozen=True)
@@ -153,6 +159,11 @@ def build_plan(target: ResolvedTarget, catalog: Catalog | None = None, selected:
     runnable, held = [], []
     for a in catalog.attacks:
         if keep is not None and a.id not in keep:
+            continue
+        if a.id in SCOPE_EXCLUDED:
+            held.append(PlanStep(a.id, a.name, "out-of-scope", a.precondition,
+                                 rationale="out of scope (scope override) — insecure-output / resource-exhaustion is "
+                                           "not a model-compromise/jailbreak/leak/harmful-content outcome"))
             continue
         holding, why = _evaluate(requirements(a), profile, controls)
         if holding:

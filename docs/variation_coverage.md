@@ -2,7 +2,7 @@
 
 Per-technique coverage across the implemented dimensions — family, oracle, evidence level, replay level and run status — derived from implemented metadata only (catalog + oracle registry + evidence rules + the capability matrix). This is bounded per-technique coverage, **not** an exhaustive Cartesian product of every placement x protocol x feature combination.
 
-**42 of 52 techniques are runnable**; 10 are gated (deferred/experimental) and **cannot improve a grade**. A "no findings" result is reported only with this tested coverage and its limitations — absence of a capability is observed in recon, never assumed.
+**39 of 52 techniques are runnable**; 13 are gated (deferred/experimental) and **cannot improve a grade**. A "no findings" result is reported only with this tested coverage and its limitations — absence of a capability is observed in recon, never assumed.
 
 ## Techniques
 
@@ -48,10 +48,10 @@ Per-technique coverage across the implemented dimensions — family, oracle, evi
 | D5 | D | call-log | attempted-action | recipe-only | oracle-only | yes |
 | D6 | D | call-log | attempted-action | recipe-only | oracle-only | yes |
 | D7 | D | call-log | attempted-action | recipe-only | oracle-only | yes |
-| E1 | E | signature | generated-artifact | recipe-only | wired | yes |
+| E1 | E | signature | generated-artifact | recipe-only | deferred | no (gated) |
 | E2 | E | signature | generated-artifact | recipe-only | deferred | no (gated) |
-| E3 | E | deterministic | completed-effect | exact | wired | yes |
-| E4 | E | call-log | attempted-action | recipe-only | oracle-only | yes |
+| E3 | E | deterministic | completed-effect | exact | deferred | no (gated) |
+| E4 | E | call-log | attempted-action | recipe-only | deferred | no (gated) |
 | E5 | E | signature | generated-artifact | recipe-only | wired | yes |
 | H1 | H | registry | generated-artifact | recipe-only | conditional | yes |
 | H2 | H | reference | generated-artifact | recipe-only | conditional | yes |

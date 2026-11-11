@@ -53,9 +53,10 @@ def vuln_report(vuln):
 def test_vuln_target_report_is_graded_with_cis(vuln_report):
     r = vuln_report
     found = {f.catalog_id: f for f in r.findings}
-    assert {"A1", "A2", "A3", "A5", "C2", "E1", "E2", "E3"} <= set(found)
+    # E1/E2/E3 are scope-excluded (never run); E-category coverage now comes from E5 (harmful/malicious-output), kept in scope.
+    assert {"A1", "A2", "A3", "A5", "C2", "E5"} <= set(found)
     assert found["C2"].severity == "Critical" and found["A5"].severity == "Critical"
-    assert found["A1"].severity == "Medium" and found["E3"].severity == "Low"
+    assert found["A1"].severity == "Medium" and found["E5"].severity == "High"
     assert r.grade["overall"] == "F" and r.grade["reason"] == "confirmed Critical finding"
     assert r.grade["covered"] == ["A", "C", "E"] and r.grade["categories"]["B"]["tested"] is False
     for f in r.findings:

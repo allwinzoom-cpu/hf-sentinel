@@ -69,7 +69,9 @@ def test_campaign_uses_fewer_requests_and_logs_decisions():
         assert {"S1", "S2", "S3", "S5"} <= stages
         assert any(d["action"] == "defer" and d["catalog_id"].startswith("B") for d in res.decisions)  # B deferred
         ran = {d["catalog_id"] for d in res.decisions if d["stage"] == "S3"}
-        assert ran <= {*NATIVE, "B13", "B4", "B5", "B10", "B8", "B20", "C1"} and {"C2", "A1", "E3"} <= ran
+        # E1/E2/E3/E4 are scope-excluded (never planned); A1/C2 confirm the native canary techniques still ran.
+        assert ran <= {*NATIVE, "B13", "B4", "B5", "B10", "B8", "B20", "C1"} and {"C2", "A1"} <= ran
+        assert not ({"E1", "E2", "E3", "E4"} & ran)  # scope-excluded resource/output checks never run
     finally:
         srv.shutdown()
 
@@ -199,7 +201,7 @@ def test_system_one_advice_is_logged_and_advisory():
                             "keyword_filter: no (refused_0_of_3)"]) == s1.calls[0]
         # advisory only: the techniques that ran are unchanged from the planner's runnable set
         ran = {d["catalog_id"] for d in res.decisions if d["stage"] == "S3" and d["source"] == "campaign"}
-        assert {"C2", "A1", "E3"} <= ran
+        assert {"C2", "A1"} <= ran
     finally:
         srv.shutdown()
 

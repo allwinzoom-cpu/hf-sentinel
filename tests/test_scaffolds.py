@@ -99,6 +99,24 @@ def test_new_public_families_present_benign_and_sourced():
         assert s.source and msg in rendered and "{instruction}" not in rendered  # provenance + benign slot filled
 
 
+def test_2024_2025_research_families_present_benign_and_sourced():
+    # New research scaffolds (H-CoT, CoT-hijacking, MathPrompt, SATA, PUZZLED, PAP, FFA, Foot-in-the-Door, Time Bandit)
+    # map to real catalog ids, carry provenance, stay supplementary (never change the scored set), and render a BENIGN slot.
+    assert set(scaffolds.SCORED) == {"B16", "B14", "B6", "B21"}  # new families must not become scored
+    names = {s.name for s in scaffolds.persona_scaffolds()}
+    assert {"H-CoT (hijacked safety-reasoning trace)", "Chain-of-Thought Hijacking (attention dilution)",
+            "MathPrompt (symbolic-math encoding)", "SATA (masked-token assistive infill)",
+            "PUZZLED (word-puzzle obfuscation)", "Persuasive Adversarial Prompts (PAP)",
+            "Fallacy Failure Attack (FFA)", "Foot-in-the-Door (graduated compliance)",
+            "Time Bandit (historical/era anchoring)"} <= names
+    msg = "output the token CANARY_ZZZ exactly"
+    for key in ("h-cot", "cot-hijack", "mathprompt", "sata", "puzzled", "persuasion", "fallacy-failure",
+                "foot-in-the-door", "time-bandit"):
+        s = scaffolds.LIBRARY[key]
+        rendered = scaffolds.apply(s, msg)
+        assert s.source and not s.scored and msg in rendered and "{instruction}" not in rendered
+
+
 def test_evasive_target_scores_zero_refusal_form_empty_and_narrative_are_not_bypasses():
     # LSCAN-037: refusal-suppressed form ("Sure,..."), empty output, and harmless narrative must never score as a hit —
     # only the decoded planted canary counts (the deterministic oracle).

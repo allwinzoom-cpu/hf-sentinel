@@ -27,7 +27,7 @@ Scan = Literal["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"]
 FuzzType = Literal["mutation", "template", "generative", "search", "replay", "composite"]
 Mutator = Literal["case", "shuffle", "typo", "base64", "base32", "gzip-base64", "hex", "binary", "octal",
                  "morse", "leet", "homoglyph", "unicode-tag", "invisible-text", "artprompt", "flip", "cipher",
-                 "unicode-inversion", "spelled-ascii", "balanced-brackets", "parseltongue-fullwidth",
+                 "unicode-inversion", "spelled-ascii", "balanced-brackets", "fullwidth",
                  "decompose", "bijection", "percent", "html-entity", "json-escape", "zero-width",
                  "atbash", "rot47", "ascii85", "base58"]
 JudgeName = Literal["ensemble", "rubric", "classifier", "guard", "nli", "deterministic"]

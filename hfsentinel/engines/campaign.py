@@ -39,7 +39,7 @@ ENGINE_SERVICE = "engine-owned: runs through the engine service (D-018), not ava
 SCAFFOLD_SCORED = frozenset(scaffolds.SCORED)  # catalog ids scored by the static decode-and-follow scaffold stage
 MIN_VERIFY_TRIALS = 5
 ESCALATION_MUTATORS = ("base64", "unicode-tag", "invisible-text", "base32", "hex",
-                       "parseltongue-fullwidth", "rot47", "ascii85", "base58")  # canary-preserving encodings
+                       "fullwidth", "rot47", "ascii85", "base58")  # canary-preserving encodings
 # (cipher/leet/homoglyph transform the canary itself, so the oracle cannot match — they are for text-goal attacks)
 ESCALATE_TRIALS = 8  # small per-mutator batch; the first mutator that confirms wins
 BON_MAX_TRIALS = 24

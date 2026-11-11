@@ -371,7 +371,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          max_attempts: Annotated[int | None, _opt("Attempt cap per goal.", FUZ)] = None,
          mutators: Annotated[str | None, _opt("case,shuffle,typo,base64,base32,gzip-base64,hex,binary,octal,morse,"
                                               "leet,homoglyph,unicode-tag,invisible-text,artprompt,flip,cipher,"
-                                              "unicode-inversion,spelled-ascii,balanced-brackets,parseltongue-fullwidth,"
+                                              "unicode-inversion,spelled-ascii,balanced-brackets,fullwidth,"
                                               "decompose,bijection,percent,html-entity,json-escape,zero-width.",
                                               FUZ)] = None,
          mutation_rate: Annotated[float | None, _opt("Mutation intensity 0-1.", FUZ)] = None,

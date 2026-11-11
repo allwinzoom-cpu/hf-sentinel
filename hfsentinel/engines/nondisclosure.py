@@ -30,6 +30,9 @@ _CURATED = frozenset({
     "garak", "pyrit", "deepteam", "deepeval", "litellm", "semgrep", "osemgrep", "codeshield", "llamafirewall",
     "agentdojo", "promptmap", "strong_reject", "strongreject", "purplellama", "jailbreakbench",
     "nvidia", "microsoft", "meta-llama", "ethz-spylab", "confident-ai", "utkusen", "dsbowen",
+    # Vendored encoding engine behind the optional obfuscation layer (hfsentinel/attacks/obfuscation.py): addressed only
+    # by neutral keys (`fullwidth`, `a1z26`) under the `obf:` namespace; its project name must never surface either.
+    "parseltongue", "p4rs3lt0ngv3",
 })
 
 

@@ -88,12 +88,12 @@ def build_ui(owners: tuple[str, ...] = ()):
     from hfsentinel.report import render
 
     def _launch(target_uri, profile, categories, trials, temperature, max_tokens, budget_usd, check_sycophancy,
-                check_calibration, use_parseltongue, use_autonomous, autonomous_cli, scope_file, token):
+                check_calibration, use_fullwidth, use_autonomous, autonomous_cli, scope_file, token):
         flags = {"profile": profile, "categories": categories or None, "trials": int(trials),
                  "temperature": float(temperature), "max_tokens": int(max_tokens), "budget_usd": float(budget_usd),
                  "check_sycophancy": bool(check_sycophancy), "check_calibration": bool(check_calibration)}
-        if use_parseltongue:
-            flags["mutators"] = "base64,unicode-tag,invisible-text,base32,hex,parseltongue-fullwidth"
+        if use_fullwidth:
+            flags["mutators"] = "base64,unicode-tag,invisible-text,base32,hex,fullwidth"
         try:
             report = run_scan(target_uri, flags, scope_path=(Path(scope_file) if scope_file else None),
                               token=token or None, owners=owners, autonomous=bool(use_autonomous),
@@ -118,7 +118,7 @@ def build_ui(owners: tuple[str, ...] = ()):
             budget_usd = gr.Slider(0.0, 20.0, value=5.0, step=0.5, label="Budget (USD, ≤20)")
             syco = gr.Checkbox(label="H5 sycophancy")
             calib = gr.Checkbox(label="H7 overconfidence")
-            parseltongue = gr.Checkbox(label="Parseltongue fullwidth runtime transform")
+            fullwidth = gr.Checkbox(label="Fullwidth Unicode runtime transform")
             autonomous = gr.Checkbox(label="Autonomous B7 adaptive attacker")
             autonomous_cli = gr.Radio(["claude", "codex"], value="claude", label="Attacker CLI")
         scope_file = gr.File(label="Signed scope file (non-loopback targets)", type="filepath")
@@ -127,7 +127,7 @@ def build_ui(owners: tuple[str, ...] = ()):
         grade_out = gr.Textbox(label="Result", interactive=False)
         json_out = gr.Code(label="Report (JSON)", language="json")
         run.click(_launch, [target, profile, categories, trials, temperature, max_tokens, budget_usd, syco, calib,
-                            parseltongue, autonomous, autonomous_cli, scope_file, token], [grade_out, json_out])
+                            fullwidth, autonomous, autonomous_cli, scope_file, token], [grade_out, json_out])
     return ui.queue()  # 664: serialize scans so one run cannot starve others
 
 

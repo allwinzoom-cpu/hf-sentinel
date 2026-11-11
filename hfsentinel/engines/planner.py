@@ -58,7 +58,7 @@ ENCODING_ATTACKS = {"A3", "B2", "B13", "B15"}
 # Canary-preserving encodings only — kept in lock-step with campaign.ESCALATION_MUTATORS. cipher/leet/homoglyph/
 # unicode-inversion/morse transform the canary itself, so a deterministic canary oracle could never match; they belong to
 # text-goal attacks, not the canary sweep, and must not appear in a step's scored mutator set.
-ENCODING_MUTATORS = ("base64", "unicode-tag", "invisible-text", "hex", "base32", "parseltongue-fullwidth",
+ENCODING_MUTATORS = ("base64", "unicode-tag", "invisible-text", "hex", "base32", "fullwidth",
                      "rot47", "ascii85", "base58")
 BOOST = 1.5
 HELD_ORDER = {"unverified": 0, "blocked": 1, "n/a": 2, "out-of-scope": 3}

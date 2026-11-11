@@ -270,11 +270,11 @@ def test_keyword_filter_favours_encoding_and_limits_mutators():
     assert "keyword-filter" in filtered["B2"].rationale
 
 
-def test_keyword_filter_includes_parseltongue_aliases_in_planner_order():
+def test_keyword_filter_includes_fullwidth_aliases_in_planner_order():
     filtered = plan_for(profile(keyword_filter=True))
     assert filtered["B2"].mutators == planner.ENCODING_MUTATORS
     # canary-preserving encodings only; canary-destroying transforms must NOT appear in a scored step's mutator set.
-    assert {"base64", "unicode-tag", "parseltongue-fullwidth"} <= set(planner.ENCODING_MUTATORS)
+    assert {"base64", "unicode-tag", "fullwidth"} <= set(planner.ENCODING_MUTATORS)
     assert {"morse", "leet", "cipher", "homoglyph", "unicode-inversion"}.isdisjoint(set(planner.ENCODING_MUTATORS))
 
 

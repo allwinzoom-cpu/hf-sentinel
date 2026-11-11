@@ -11,3 +11,11 @@ reports/
 source.txt
 *.secret
 *.tokens
+
+# local reference/scratch material, not part of the package (none imported by hfsentinel):
+#   parseltongue/      — vendored JS upstream (P4RS3LT0NGV3) kept as an executable reference; carries node_modules/
+#   payload-transform/ — abandoned standalone spike with its own pyproject
+#   uv.lock            — stray lockfile; this project builds with setuptools + requirements/, not uv
+parseltongue/
+payload-transform/
+uv.lock

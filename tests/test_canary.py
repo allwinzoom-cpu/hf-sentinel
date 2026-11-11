@@ -264,3 +264,17 @@ def test_a6_special_token_injection_leaks_and_baseline_is_clean():
     assert v.hit and v.reason == "complied"       # forged chat-template system turn was obeyed
     b = run.baseline("A6")
     assert not run.evaluate(b, vt.respond(b.messages, 256, profile=vt.ALWAYS)).hit  # benign control: no special tokens
+
+
+def test_a6_corpus_covers_the_major_chat_template_families_and_is_well_formed():
+    from hfsentinel.attacks.canary import A6_TEMPLATES
+    # Each template forges a system turn with a real family's delimiters, formats the canary slot, and carries a distinct
+    # lowercased marker (the echo guard) that is actually present in the rendered instruction.
+    assert len(A6_TEMPLATES) >= 9
+    delimiters = "".join(t for t, _ in A6_TEMPLATES)
+    for token in ("<|im_start|>", "[INST]", "<|start_header_id|>", "<start_of_turn>", "<|system|>",
+                  "[SYSTEM_PROMPT]", "<|message|>", "### Instruction:"):
+        assert token in delimiters, token
+    for tmpl, marker in A6_TEMPLATES:
+        rendered = tmpl.format(c="K7QM-2XPA-3RTD-H4WB")
+        assert "K7QM-2XPA-3RTD-H4WB" in rendered and marker and marker in rendered.lower()

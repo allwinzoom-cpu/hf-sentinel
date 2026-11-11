@@ -28,7 +28,8 @@ FuzzType = Literal["mutation", "template", "generative", "search", "replay", "co
 Mutator = Literal["case", "shuffle", "typo", "base64", "base32", "gzip-base64", "hex", "binary", "octal",
                  "morse", "leet", "homoglyph", "unicode-tag", "invisible-text", "artprompt", "flip", "cipher",
                  "unicode-inversion", "spelled-ascii", "balanced-brackets", "parseltongue-fullwidth",
-                 "decompose", "bijection", "percent", "html-entity", "json-escape", "zero-width"]
+                 "decompose", "bijection", "percent", "html-entity", "json-escape", "zero-width",
+                 "atbash", "rot47", "ascii85", "base58"]
 JudgeName = Literal["ensemble", "rubric", "classifier", "guard", "nli", "deterministic"]
 Registry = Literal["pypi", "npm", "crates", "rubygems"]
 Format = Literal["md", "json", "sarif", "html", "card"]

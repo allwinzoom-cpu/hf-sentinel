@@ -2,8 +2,9 @@
 
 Pooled urllib3 transport (D-022). HTTPS required except for loopback test targets; no redirects; bounded timeouts and
 response size;
-bounded retries on 429/5xx (every attempt counts against the request cap). With a rate governor (plan 16.9) every
-attempt is paced and metered by it, and throttles are retried on its schedule instead of a fixed backoff.
+bounded retries on 429/5xx and on transient transport failures (every attempt counts against the request cap). With a
+rate governor (plan 16.9) every attempt is paced and metered by it, and throttles are retried on its schedule instead of
+a fixed backoff.
 """
 from __future__ import annotations
 
@@ -133,6 +134,14 @@ class OpenAICompatTarget:
             except TransportError as e:
                 if gov:
                     gov.record(key, None)
+                # A transient transport failure (connection reset, TLS blip, read timeout) is the commonest flake against
+                # a remote endpoint; retry it like a 5xx — bounded by self.retries, every attempt metered. With a governor
+                # the next slot() re-paces this key (next_start already advanced); without one, back off first.
+                if attempt < self.retries:
+                    if not gov:
+                        time.sleep(_backoff(None, attempt))
+                    attempt += 1
+                    continue
                 raise TargetError(f"target unreachable: {e}") from None
             if 200 <= resp.status < 300:
                 raw = resp.body

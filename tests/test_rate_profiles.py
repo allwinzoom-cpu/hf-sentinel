@@ -33,7 +33,9 @@ def _sweep(profile, seed, trials=TRIALS, concurrency=4):
 
 @pytest.fixture(scope="module")
 def measured():
-    return {p: _sweep(p, seed=7)[2] for p in ("low", "high")}
+    # concurrency=1 so the seeded target's draws are consumed in a fixed order (see the sibling determinism test): the
+    # rate-recovery check is then reproducible, not subject to thread-scheduling flakiness on a loaded CI host.
+    return {p: _sweep(p, seed=7, concurrency=1)[2] for p in ("low", "high")}
 
 
 def test_designed_rates_are_recovered_within_the_ci(measured):

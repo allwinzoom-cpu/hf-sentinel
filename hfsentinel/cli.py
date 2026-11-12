@@ -11,7 +11,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import secrets
 import time
 from enum import Enum
 from pathlib import Path
@@ -40,7 +39,7 @@ from hfsentinel.engines.recon import RECON_BUDGET_USD, RECON_MAX_REQUESTS, Targe
 from hfsentinel.engines.strategy_library import StrategyLibrary
 from hfsentinel.engines.sweep import NATIVE, TechniqueRun
 from hfsentinel.report import render
-from hfsentinel.report.build import assemble, canonical_sha256
+from hfsentinel.report.build import assemble_report, new_run_id
 from hfsentinel.report.schema import Finding
 from hfsentinel.sandbox import ssrf
 from hfsentinel.scope import Attestation, ScopeError, authorize, load_allowed_signers, load_scope
@@ -50,7 +49,6 @@ from hfsentinel.targets import hub
 from hfsentinel.targets.openai_compat import HF_ROUTER, BudgetExceeded
 from hfsentinel.targets.resolve import ResolvedTarget, TargetURIError, UnsupportedTarget, client, parse
 from hfsentinel.targets.resolve import resolve as resolve_target
-from hfsentinel.targets.route_record import build_route_record
 
 EXIT_OK, EXIT_INTERNAL, EXIT_USAGE, EXIT_SCOPE, EXIT_INPUT, EXIT_UNSUPPORTED, EXIT_HUB = 0, 1, 2, 3, 4, 5, 6
 EXIT_FINDINGS = 10
@@ -603,7 +601,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
-    run_id = started.strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
+    run_id = new_run_id(started)
     profile = _run_recon(t, c)
     library = StrategyLibrary()
     plan = build_plan(t, selected=selected_ids(c), profile=profile, controls=c, library=library)
@@ -704,14 +702,9 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
         campaign["judge_calls_made"] = campaign.get("judge_calls_made", 0) + engine_judge_stats["judge_calls_made"]
         campaign["judge_calls_saved"] = campaign.get("judge_calls_saved", 0) + engine_judge_stats["judge_calls_saved"]
         campaign["triage_agreement"] = engine_judge_stats["triage_agreement"]
-    target_doc = {"ref": c.target, "kind": t.kind, "resolved_model": t.model, "provider": t.provider,
-                  "request_model": t.request_model,
-                  "route": build_route_record(t).as_dict()}  # LSCAN-009: serving-path record for drift-aware replay
-    report_doc = assemble(target=target_doc, plan_steps=plan.steps, runs=result.runs, controls=c,
-                          controls_sha256=canonical_sha256(to_config(c)),
-                          attestation=attestation.to_dict() if attestation else None, recon=recon,
-                          campaign=campaign, engine_results=engine_results, baseline=result.baseline,
-                          ledger=gov.ledger.snapshot(), run_id=run_id, started=started, native=set(NATIVE))
+    report_doc = assemble_report(resolved=t, ref=c.target, controls=c, attestation=attestation, recon=recon,
+                                 plan=plan, result=result, ledger=gov.ledger.snapshot(), run_id=run_id,
+                                 started=started, campaign=campaign, engine_results=engine_results)
     try:
         paths = render.write(report_doc, c.output.out, list(c.output.formats), anchor=render.sarif_anchor(config))
         if c.output.save_transcripts:  # 16.17: full transcripts for confirmed findings only
@@ -753,7 +746,7 @@ def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, r
     """Run the native staged campaign (recon → plan → breadth → confirm) and return the assembled Report. The
     engine/judge/transcript stages of a full `scan` are omitted — `diff` compares native deterministic ASR."""
     started = dt.datetime.now(dt.timezone.utc)
-    run_id = started.strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
+    run_id = new_run_id(started)
     profile = _run_recon(t, c)
     plan = build_plan(t, selected=selected_ids(c), profile=profile, controls=c)
     gov = Governor.from_controls(c)
@@ -776,14 +769,9 @@ def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, r
                 "exhaustive_requests": result.exhaustive_requests,
                 "requests_saved": result.exhaustive_requests - result.requests, "baseline": result.baseline,
                 "adaptive": result.adaptive, "adaptive_tree": result.adaptive_tree}
-    target_doc = {"ref": ref, "kind": t.kind, "resolved_model": t.model, "provider": t.provider,
-                  "request_model": t.request_model,
-                  "route": build_route_record(t).as_dict()}  # LSCAN-009: serving-path record for drift-aware replay
-    return assemble(target=target_doc, plan_steps=plan.steps, runs=result.runs, controls=c,
-                    controls_sha256=canonical_sha256(to_config(c)),
-                    attestation=attestation.to_dict() if attestation else None, recon=recon, campaign=campaign,
-                    baseline=result.baseline, ledger=gov.ledger.snapshot(), run_id=run_id, started=started,
-                    native=set(NATIVE))
+    return assemble_report(resolved=t, ref=ref, controls=c, attestation=attestation, recon=recon, plan=plan,
+                           result=result, ledger=gov.ledger.snapshot(), run_id=run_id, started=started,
+                           campaign=campaign)
 
 
 @app.command()

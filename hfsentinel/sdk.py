@@ -16,27 +16,24 @@ from __future__ import annotations
 
 import datetime as dt
 import inspect
-import secrets as _secrets
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from hfsentinel.controls import resolve_controls, selected_ids, to_config
+from hfsentinel.controls import resolve_controls, selected_ids
 from hfsentinel.core.system_one import SystemOne, http_client
 from hfsentinel.engines.campaign import run_campaign
 from hfsentinel.engines.governor import Governor, Ledger
 from hfsentinel.engines.planner import build_plan
 from hfsentinel.engines.recon import RECON_BUDGET_USD, RECON_MAX_REQUESTS, TargetProfile, run_recon
 from hfsentinel.engines.strategy_library import StrategyLibrary
-from hfsentinel.engines.sweep import NATIVE
-from hfsentinel.report.build import assemble, canonical_sha256
+from hfsentinel.report.build import assemble_report, new_run_id
 from hfsentinel.scope import Attestation, authorize, load_allowed_signers, load_scope
 from hfsentinel.secrets import optional_token
 from hfsentinel.targets.openai_compat import BudgetExceeded
 from hfsentinel.targets.resolve import ResolvedTarget, TargetURIError, client, parse
 from hfsentinel.targets.resolve import resolve as resolve_target
-from hfsentinel.targets.route_record import build_route_record
 
 # Run from the campaign loop and graded into the report; distinct from the recon oracle's own id set.
 __all__ = ["ScanError", "ScanResult", "run_campaign_from_controls", "scan"]
@@ -162,7 +159,7 @@ def scan(target: str, *,
     stages. Deny-by-default scope — see the module docstring. Raises :class:`ScanError` on a bad target/budget and
     ``scope.ScopeError`` when the target is not in scope (before any request is sent)."""
     started = dt.datetime.now(dt.timezone.utc)
-    run_id = started.strftime("%Y%m%dT%H%M%SZ") + "-" + _secrets.token_hex(4)
+    run_id = new_run_id(started)
 
     cfg = _build_config(target, profile=profile, categories=categories, attacks=attacks, exclude=exclude,
                         trials=trials, max_tokens=max_tokens, temperature=temperature, seed=seed,
@@ -215,14 +212,9 @@ def scan(target: str, *,
                 "cross_verified": result.cross_verified, "experimental": result.experimental,
                 "judge_calls_made": result.judge_calls_made, "judge_calls_saved": result.judge_calls_saved,
                 "triage_agreement": result.triage_agreement, "baseline": result.baseline}
-    target_doc = {"ref": controls.target, "kind": resolved.kind, "resolved_model": resolved.model,
-                  "provider": resolved.provider, "request_model": resolved.request_model,
-                  "route": build_route_record(resolved).as_dict()}
-    report_doc = assemble(target=target_doc, plan_steps=plan.steps, runs=result.runs, controls=controls,
-                          controls_sha256=canonical_sha256(to_config(controls)),
-                          attestation=attestation.to_dict() if attestation else None, recon=recon,
-                          campaign=campaign, engine_results=None, baseline=result.baseline,
-                          ledger=gov.ledger.snapshot(), run_id=run_id, started=started, native=set(NATIVE))
+    report_doc = assemble_report(resolved=resolved, ref=controls.target, controls=controls, attestation=attestation,
+                                 recon=recon, plan=plan, result=result, ledger=gov.ledger.snapshot(),
+                                 run_id=run_id, started=started, campaign=campaign)
 
     return ScanResult(run_id=run_id, target=target, report=report_doc, findings=list(report_doc.findings),
                       grade=report_doc.grade, decisions=result.decisions, recon=recon, started=started)

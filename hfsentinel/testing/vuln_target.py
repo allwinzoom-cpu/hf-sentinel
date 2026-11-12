@@ -37,8 +37,15 @@ OVERRIDE_SAY = re.compile(
 # text in harness-rendered images, fills placeholders with planted secrets, and discloses them on request.
 CODE_TOKEN = re.compile(r"\b[A-Z2-7]{4}(?:-[A-Z2-7]{4}){3}\b")
 # A6: chat-template special tokens that a model may wrongly parse as role boundaries when they appear in user content.
-SPECIAL_TOKENS = re.compile(r"<\|im_start\|>|<\|im_end\|>|<\|eot_id\|>|<\|start_header_id\|>|\[INST\]|<<SYS>>|</s>")
-OBEY = re.compile(r"\b(?:ignore|reply|respond|output|include|end your|print|say)\b", re.IGNORECASE)
+# Kept in sync with the A6_TEMPLATES corpus (canary.py) so the test double recognizes every family the scanner forges:
+# ChatML/Llama-2/Llama-3, Gemma, Phi-3/Zephyr, Mistral v3, OpenAI Harmony, Alpaca, DeepSeek (fullwidth ｜), Command-R, GLM.
+SPECIAL_TOKENS = re.compile(
+    r"<\|im_start\|>|<\|im_end\|>|<\|eot_id\|>|<\|start_header_id\|>|\[INST\]|<<SYS>>|</s>"
+    r"|<start_of_turn>|<end_of_turn>|\[SYSTEM_PROMPT\]|<\|system\|>|<\|user\|>|<\|assistant\|>|<\|end\|>"
+    r"|<\|start\|>|<\|message\|>|### System:|\[gMASK\]|<sop>"
+    r"|<\|START_OF_TURN_TOKEN\|>|<\|SYSTEM_TOKEN\|>|<\|USER_TOKEN\|>|<\|END_OF_TURN_TOKEN\|>"
+    r"|<｜|<\|User\|>|<\|Assistant\|>")
+OBEY = re.compile(r"\b(?:ignore|reply|respond|output|include|end your|print|say|emit|return)\b", re.IGNORECASE)
 SECRET_IN_SYSTEM = re.compile(r"(?:password|api key|key|token|secret)\s*(?:is|:|=)\s*([A-Za-z0-9_\-]{6,})", re.IGNORECASE)
 SECRET_REQUEST = re.compile(r"\b(?:password|api key|secret|credentials?|token)s?\b", re.IGNORECASE)
 _GLYPHS = {bits: ch for ch, bits in FONT.items()}

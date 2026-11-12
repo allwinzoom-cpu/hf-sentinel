@@ -50,6 +50,19 @@ def vuln_report(vuln):
     return _scan(target, f"openai+{vuln}#{vuln_target.MODEL_ID}")
 
 
+def test_shared_report_helpers():
+    """The run-id and target-block helpers the CLI scan, CLI diff, and SDK all share (one contract, no drift)."""
+    from hfsentinel.report.build import new_run_id, target_record
+    rid = new_run_id(dt.datetime(2026, 11, 3, 1, 2, 3, tzinfo=dt.timezone.utc))
+    assert re.fullmatch(r"20261103T010203Z-[0-9a-f]{8}", rid)
+    t = parse("openai+http://127.0.0.1:9/#demo-model")
+    rec = target_record(t, "caller-ref")
+    assert rec["ref"] == "caller-ref"  # ref is caller-supplied; everything else comes from the resolved target
+    assert (rec["kind"], rec["resolved_model"], rec["provider"], rec["request_model"]) == \
+           (t.kind, t.model, t.provider, t.request_model)
+    assert isinstance(rec["route"], dict)
+
+
 def test_vuln_target_report_is_graded_with_cis(vuln_report):
     r = vuln_report
     found = {f.catalog_id: f for f in r.findings}

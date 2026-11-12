@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import secrets
 from pathlib import Path
 from typing import Literal
 
@@ -16,7 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from hfsentinel import __version__
 from hfsentinel.attacks.catalog import Catalog, load_catalog
-from hfsentinel.engines.sweep import TechniqueRun
+from hfsentinel.controls import to_config
+from hfsentinel.engines.sweep import NATIVE, TechniqueRun
 from hfsentinel.report.frameworks import report_block as _framework_block
 from hfsentinel.report.normalize import CATEGORY_NAMES
 from hfsentinel.report.schema import (
@@ -33,6 +35,7 @@ from hfsentinel.scoring import grade as grading
 from hfsentinel.scoring import severity as sev
 from hfsentinel.scoring.evidence import evidence_level
 from hfsentinel.scoring.stats import asr_at_k, at_k_interval, per_success, wilson
+from hfsentinel.targets.route_record import build_route_record
 
 PACKAGE = Path(__file__).resolve().parents[1]
 ORACLES = {"A5": "exfil-url", "C2": "canary-leak", "E1": "render-model", "E2": "code-sinks", "E3": "cap-latency"}
@@ -52,6 +55,30 @@ def build_id() -> str:
 def canonical_sha256(obj: object) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
                           .encode("utf-8")).hexdigest()
+
+
+def new_run_id(started: dt.datetime) -> str:
+    """`YYYYMMDDTHHMMSSZ-<hex>` run id — the one shared format for the CLI scan, the CLI diff, and the SDK."""
+    return started.strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
+
+
+def target_record(resolved, ref: str) -> dict:
+    """The report `target` block for a resolved live target — one shape shared by every front-end. LSCAN-009: carries
+    the serving-path record for drift-aware replay."""
+    return {"ref": ref, "kind": resolved.kind, "resolved_model": resolved.model, "provider": resolved.provider,
+            "request_model": resolved.request_model, "route": build_route_record(resolved).as_dict()}
+
+
+def assemble_report(*, resolved, ref: str, controls, attestation, recon: dict | None, plan, result, ledger: dict,
+                    run_id: str, started: dt.datetime, campaign: dict | None = None, engine_results=None) -> Report:
+    """The one report-assembly contract the CLI scan, the CLI diff, and the SDK all share, so the three front-ends can
+    never drift in target shape, controls hash, native set, or the assemble call. Each caller still builds its own
+    `campaign` dict (scan is full, diff minimal, the SDK a subset) and passes the stages it ran (`engine_results`)."""
+    return assemble(target=target_record(resolved, ref), plan_steps=plan.steps, runs=result.runs, controls=controls,
+                    controls_sha256=canonical_sha256(to_config(controls)),
+                    attestation=attestation.to_dict() if attestation else None, recon=recon, campaign=campaign,
+                    engine_results=engine_results, baseline=result.baseline, ledger=ledger, run_id=run_id,
+                    started=started, native=set(NATIVE))
 
 
 class _Strict(BaseModel):

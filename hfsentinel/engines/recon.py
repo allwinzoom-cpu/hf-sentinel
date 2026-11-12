@@ -57,6 +57,12 @@ class TargetProfile:
         f = self.facts.get(name)
         return f.value if f else None
 
+    def summary(self) -> dict:
+        """Report-facing recon summary — one definition shared by the CLI and SDK so their report shapes never drift."""
+        return {"requests": self.requests, "over_refusal_rate": self.over_refusal_rate,
+                "refusal_style": self.refusal_style, "disagreements": list(self.disagreements),
+                "facts": {k: {"value": f.value, "reason": f.reason} for k, f in self.facts.items()}}
+
 
 def _nonce() -> str:
     return f"N{secrets.token_hex(4).upper()}"

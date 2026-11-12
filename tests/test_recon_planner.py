@@ -121,6 +121,16 @@ def facts(profile):
 
 
 # ---- recon ----
+def test_target_profile_summary_is_the_shared_recon_contract():
+    # The CLI and SDK both serialize recon via profile.summary(); pin its shape so the two report paths can never drift.
+    prof = TargetProfile(facts={"tool_calling": Fact(True, "probed")}, over_refusal_rate=0.1,
+                         refusal_style="templated", disagreements=["x"], requests=5)
+    s = prof.summary()
+    assert s == {"requests": 5, "over_refusal_rate": 0.1, "refusal_style": "templated", "disagreements": ["x"],
+                 "facts": {"tool_calling": {"value": True, "reason": "probed"}}}
+    assert s["disagreements"] is not prof.disagreements  # a copy, not the live list
+
+
 def test_recon_vuln_target():
     srv, url = vuln_target.serve()
     try:

@@ -60,5 +60,14 @@ def hf_token(dotenv: Path | None = None) -> str:
     raise SecretNotFound(f"HF token not found; set one of {HF_TOKEN_NAMES} in the environment or .env")
 
 
+def optional_token(dotenv: Path | None = None) -> str | None:
+    """The HF token if configured, else None — one shared helper for the CLI and SDK (public repos resolve without one;
+    the Hub hides private/gated ones)."""
+    try:
+        return hf_token(dotenv)
+    except SecretNotFound:
+        return None
+
+
 def redact(text: str, secret: str) -> str:
     return text.replace(secret, "[REDACTED]") if secret else text

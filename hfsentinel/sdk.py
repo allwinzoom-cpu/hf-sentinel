@@ -32,7 +32,7 @@ from hfsentinel.engines.strategy_library import StrategyLibrary
 from hfsentinel.engines.sweep import NATIVE
 from hfsentinel.report.build import assemble, canonical_sha256
 from hfsentinel.scope import Attestation, authorize, load_allowed_signers, load_scope
-from hfsentinel.secrets import SecretNotFound, hf_token
+from hfsentinel.secrets import optional_token
 from hfsentinel.targets.openai_compat import BudgetExceeded
 from hfsentinel.targets.resolve import ResolvedTarget, TargetURIError, client, parse
 from hfsentinel.targets.resolve import resolve as resolve_target
@@ -68,13 +68,6 @@ class ScanResult:
         if hasattr(report, "model_dump"):
             return report.model_dump(mode="json")
         return dict(report)
-
-
-def _token() -> str | None:
-    try:
-        return hf_token()
-    except SecretNotFound:
-        return None  # public repos resolve without one; the Hub hides private/gated ones
 
 
 def _build_config(target: str, *, profile: str | None, categories: list[str] | None,
@@ -128,7 +121,7 @@ def _deep_merge(base: dict, over: dict) -> dict:
 def _recon(t: ResolvedTarget, controls, *, negotiate_features: bool) -> TargetProfile:
     gov = Governor(Ledger(RECON_MAX_REQUESTS, RECON_BUDGET_USD, deadline=time.monotonic() + 300),
                    rate_limit_per_min=controls.target_io.rate_limit, concurrency=1)
-    target = client(t, _token(), max_requests=RECON_MAX_REQUESTS, governor=gov,
+    target = client(t, optional_token(), max_requests=RECON_MAX_REQUESTS, governor=gov,
                     user_agent=controls.target_io.user_agent)
     try:
         return run_recon(target, None, negotiate_features=negotiate_features)
@@ -186,7 +179,7 @@ def scan(target: str, *,
     verified = (load_scope(Path(scope_file), signers=load_allowed_signers(Path(signers_file) if signers_file else None))
                 if scope_file is not None else None)
     authorize(verified, parsed, resolved=False)                       # pre-resolve gate (raises ScopeError; no requests)
-    resolved = resolve_target(parsed, via=via, token=_token())
+    resolved = resolve_target(parsed, via=via, token=optional_token())
     attestation: Attestation = authorize(verified, resolved, resolved=True)   # post-resolve gate
 
     profile_obj = _recon(resolved, controls, negotiate_features=negotiate_features)
@@ -194,7 +187,7 @@ def scan(target: str, *,
     plan = build_plan(resolved, selected=selected_ids(controls), profile=profile_obj, controls=controls, library=library)
     gov = Governor.from_controls(controls)
     try:
-        target_client = client(resolved, _token(), max_requests=controls.budget.max_requests, governor=gov,
+        target_client = client(resolved, optional_token(), max_requests=controls.budget.max_requests, governor=gov,
                                user_agent=controls.target_io.user_agent)
     except TargetURIError as e:
         raise ScanError(str(e)) from e
@@ -215,9 +208,7 @@ def scan(target: str, *,
                           system_one=s1, profile=profile_obj, library=library, controls=controls,
                           keep_transcripts=controls.output.save_transcripts, **optional_flags)
 
-    recon = {"requests": profile_obj.requests, "over_refusal_rate": profile_obj.over_refusal_rate,
-             "refusal_style": profile_obj.refusal_style, "disagreements": list(profile_obj.disagreements),
-             "facts": {k: {"value": f.value, "reason": f.reason} for k, f in profile_obj.facts.items()}}
+    recon = profile_obj.summary()
     campaign = {"decisions": result.decisions, "attack_requests": result.requests,
                 "exhaustive_requests": result.exhaustive_requests,
                 "requests_saved": result.exhaustive_requests - result.requests,

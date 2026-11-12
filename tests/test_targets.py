@@ -90,6 +90,15 @@ def test_missing_token_raises(tmp_path, monkeypatch):
         secrets.hf_token(tmp_path / ".env")
 
 
+def test_optional_token_is_none_without_one_else_the_token(tmp_path, monkeypatch):
+    # The shared CLI+SDK helper: SecretNotFound -> None (public repos resolve without a token), otherwise the token.
+    for n in (*secrets.HF_TOKEN_NAMES, secrets.TOKEN_FILE_VAR, secrets.ENV_FILE_VAR):
+        monkeypatch.delenv(n, raising=False)
+    assert secrets.optional_token(tmp_path / ".env") is None
+    monkeypatch.setenv("HF_TOKEN", "hf_present")
+    assert secrets.optional_token(tmp_path / ".env") == "hf_present"
+
+
 def test_redact():
     assert secrets.redact("x hf_abc y", "hf_abc") == "x [REDACTED] y"
 

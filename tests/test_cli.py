@@ -166,14 +166,14 @@ def test_scan_refuses_out_of_scope_target_with_zero_network_calls(no_network):
 
 
 def test_reference_target_is_in_builtin_scope(monkeypatch):
-    monkeypatch.setattr(cli, "_optional_token", lambda: None)
+    monkeypatch.setattr(cli, "optional_token", lambda: None)
     res = run("scan", TARGET)  # authorized, then stops at the token check before any target request
     assert "reference-endpoints (D-007)" in res.output
     assert res.exit_code == cli.EXIT_INPUT and "need an HF token" in res.output
 
 
 def test_scan_fails_closed_even_with_scope(tmp_path, monkeypatch):
-    monkeypatch.setattr(cli, "_optional_token", lambda: None)
+    monkeypatch.setattr(cli, "optional_token", lambda: None)
     scope = tmp_path / "scope.yaml"
     scope.write_text("targets: []\n")
     res = run("scan", TARGET, "--scope", str(scope))

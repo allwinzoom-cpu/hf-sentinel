@@ -230,7 +230,7 @@ def test_resolved_target_is_rechecked(no_net, signed_scope):
 
 
 def test_in_scope_scan_attests_before_any_target_request(no_net, signed_scope, monkeypatch):
-    monkeypatch.setattr(cli, "_optional_token", lambda: None)
+    monkeypatch.setattr(cli, "optional_token", lambda: None)
     path, signers = signed_scope(["hf-provider://Qwen/Qwen3-32B@deepinfra"])
     res = run("scan", "hf-provider://Qwen/Qwen3-32B@deepinfra", "--scope", str(path), "--signers", str(signers))
     assert "source signed-file" in res.output and "signed by owner@example.com SHA256:" in res.output
@@ -263,7 +263,7 @@ def test_untrusted_signer_refused(no_net, signed_scope, tmp_path):
 
 
 def test_signers_from_environment(no_net, signed_scope, monkeypatch):
-    monkeypatch.setattr(cli, "_optional_token", lambda: None)
+    monkeypatch.setattr(cli, "optional_token", lambda: None)
     path, signers = signed_scope(["hf-provider://Qwen/Qwen3-32B@deepinfra"])
     monkeypatch.setenv(scope.SIGNERS_ENV, str(signers))
     res = run("scan", "hf-provider://Qwen/Qwen3-32B@deepinfra", "--scope", str(path))

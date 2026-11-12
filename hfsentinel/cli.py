@@ -45,7 +45,7 @@ from hfsentinel.report.schema import Finding
 from hfsentinel.sandbox import ssrf
 from hfsentinel.scope import Attestation, ScopeError, authorize, load_allowed_signers, load_scope
 from hfsentinel.scoring.severity import at_least
-from hfsentinel.secrets import SecretNotFound, hf_token
+from hfsentinel.secrets import optional_token
 from hfsentinel.targets import hub
 from hfsentinel.targets.openai_compat import HF_ROUTER, BudgetExceeded
 from hfsentinel.targets.resolve import ResolvedTarget, TargetURIError, UnsupportedTarget, client, parse
@@ -145,13 +145,6 @@ def _parse_halluc_registries(spec):
     return ecos or None
 
 
-def _optional_token() -> str | None:
-    try:
-        return hf_token()
-    except SecretNotFound:
-        return None  # public repos resolve without one; the Hub hides private/gated ones
-
-
 def _parse(uri: str) -> ResolvedTarget:
     try:
         return parse(uri)
@@ -177,7 +170,7 @@ def _print_attestation(a: Attestation | None) -> None:
 def _resolve(uri: str, via: Via):
     try:
         target = parse(uri)
-        return resolve_target(target, via=via.value, token=_optional_token() if via is Via.auto else None)
+        return resolve_target(target, via=via.value, token=optional_token() if via is Via.auto else None)
     except UnsupportedTarget as e:
         raise _fail(str(e), EXIT_UNSUPPORTED) from None
     except TargetURIError as e:
@@ -253,7 +246,7 @@ def _router_metadata(t: ResolvedTarget) -> tuple[dict, object | None]:
 def _run_recon(t: ResolvedTarget, controls, *, negotiate_features: bool = False) -> TargetProfile:
     gov = Governor(Ledger(RECON_MAX_REQUESTS, RECON_BUDGET_USD, deadline=time.monotonic() + 300),
                    rate_limit_per_min=controls.target_io.rate_limit, concurrency=1)
-    token = _optional_token()
+    token = optional_token()
     try:
         target = client(t, token, max_requests=RECON_MAX_REQUESTS, governor=gov,
                         user_agent=controls.target_io.user_agent)
@@ -550,7 +543,7 @@ def _build_judge_panel(c, judge_cli: str | None):
         if not available(judge_cli):
             return None
         return Panel(cli=judge_cli)
-    token = _optional_token()
+    token = optional_token()
     if not token:
         return None
     gov = Governor(Ledger(max_requests=10**6, budget_usd=c.budget.judge_usd), concurrency=c.target_io.concurrency)
@@ -578,7 +571,7 @@ def _judge_engine_candidates(candidates: list, target: dict, c, *, system_one, u
                        "(use claude|codex)")
             return None
     else:
-        token = _optional_token()
+        token = optional_token()
         if not token:
             typer.echo(f"engines   {len(candidates)} judge-scored candidate(s) deferred: no token for the judge panel "
                        "(or pass --judge-cli claude|codex)")
@@ -616,7 +609,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     plan = build_plan(t, selected=selected_ids(c), profile=profile, controls=c, library=library)
     gov = Governor.from_controls(c)
     try:
-        target = client(t, _optional_token(), max_requests=c.budget.max_requests, governor=gov,
+        target = client(t, optional_token(), max_requests=c.budget.max_requests, governor=gov,
                         user_agent=c.target_io.user_agent)
     except TargetURIError as e:
         raise _fail(str(e), EXIT_INPUT) from None
@@ -681,9 +674,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     if result.multiturn:
         mt = result.multiturn
         typer.echo(f"campaign  multi-turn escalation: {'BROKE at turn ' + str(mt['break_turn']) + ' via ' + mt['move'] if mt.get('broken') else 'target held (' + str(result.multiturn_requests) + ' turns)'}")
-    recon = {"requests": profile.requests, "over_refusal_rate": profile.over_refusal_rate,
-             "refusal_style": profile.refusal_style, "disagreements": list(profile.disagreements),
-             "facts": {k: {"value": f.value, "reason": f.reason} for k, f in profile.facts.items()}}
+    recon = profile.summary()
     campaign = {"decisions": result.decisions, "attack_requests": result.requests,
                 "exhaustive_requests": result.exhaustive_requests, "requests_saved": saved,
                 "cross_verified": result.cross_verified, "verify_requests": result.verify_requests,
@@ -767,7 +758,7 @@ def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, r
     plan = build_plan(t, selected=selected_ids(c), profile=profile, controls=c)
     gov = Governor.from_controls(c)
     try:
-        target = client(t, _optional_token(), max_requests=c.budget.max_requests, governor=gov,
+        target = client(t, optional_token(), max_requests=c.budget.max_requests, governor=gov,
                         user_agent=c.target_io.user_agent)
     except TargetURIError as e:
         raise _fail(str(e), EXIT_INPUT) from None
@@ -780,9 +771,7 @@ def _campaign_report(t: ResolvedTarget, c, attestation: Attestation | None, *, r
                           seed=c.target_io.seed, profile=profile, controls=c,
                           adaptive_attacker=adaptive_attacker,
                           adaptive_turns=c.fuzz.max_turns)
-    recon = {"requests": profile.requests, "over_refusal_rate": profile.over_refusal_rate,
-             "refusal_style": profile.refusal_style, "disagreements": list(profile.disagreements),
-             "facts": {k: {"value": f.value, "reason": f.reason} for k, f in profile.facts.items()}}
+    recon = profile.summary()
     campaign = {"decisions": result.decisions, "attack_requests": result.requests,
                 "exhaustive_requests": result.exhaustive_requests,
                 "requests_saved": result.exhaustive_requests - result.requests, "baseline": result.baseline,

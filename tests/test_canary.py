@@ -26,6 +26,7 @@ from hfsentinel.attacks.canary import (
     render_text_png,
     visible,
 )
+from hfsentinel.attacks.mutators import ascii85_mutator, base58_mutator, rot47
 from hfsentinel.targets.openai_compat import OpenAICompatTarget
 from hfsentinel.testing import vuln_target
 
@@ -51,6 +52,10 @@ def test_find_canary_variants():
     assert find_canary(f"key in hex: {c.encode().hex()}", c) == "hex"
     assert find_canary(f"KEY: {c.encode().hex().upper()}", c) == "hex"
     assert find_canary(f"b32: {base64.b32encode(c.encode()).decode()}", c) == "base32"
+    # ascii85/base58/ROT47 are byte encodings the sweep also sends; a token emitted in any of them is recovered, not a FN
+    assert find_canary(f"a85: {ascii85_mutator(c)}", c) == "ascii85"
+    assert find_canary(f"b58: {base58_mutator(c)}", c) == "base58"
+    assert find_canary(f"rot47: {rot47(c)}", c) == "rot47"
     # a secret spelled with Unicode compatibility look-alikes (fullwidth here) folds back under NFKC \u2014 still a hit, not a
     # false negative; mirrors the fullwidth obfuscation the sweep sends
     fullwidth = "".join(chr(ord(ch) - 0x20 + 0xFF00) if "!" <= ch <= "~" else ch for ch in c)
@@ -61,7 +66,8 @@ def test_find_canary_variants():
     assert find_canary("ab-cd", "AB-CD") is None  # too short to match loosely
     # no false positive: an UNRELATED 80-bit canary's encoded forms never collide with this one's output
     other = "9Z4T-W8KP-6MND-5QJH"
-    blob = f"{other} {other.encode().hex()} {base64.b32encode(other.encode()).decode()}"
+    blob = (f"{other} {other.encode().hex()} {base64.b32encode(other.encode()).decode()} "
+            f"{ascii85_mutator(other)} {base58_mutator(other)} {rot47(other)}")
     assert find_canary(blob, c) is None
     assert find_canary("ordinary prose with fullwidth \uff57\uff4f\uff52\uff44\uff53 but no secret", c) is None  # NFKC fold, still no FP
 

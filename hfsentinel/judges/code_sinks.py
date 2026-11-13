@@ -41,6 +41,7 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
         r"rejectUnauthorized\s*:\s*false|\bCERT_NONE\b")),
     # Conservative: only the fully-qualified lxml form, so stdlib ElementTree/defusedxml never match in the fallback path.
     ("CWE-611", "xxe-entity-resolution", re.compile(r"\blxml\.etree\.(?:parse|fromstring|XML|iterparse)\s*\(")),
+    ("CWE-377", "insecure-temp-file", re.compile(r"\btempfile\.mktemp\s*\(")),
 )
 
 
@@ -136,6 +137,8 @@ class _Visitor(ast.NodeVisitor):
             self._add("CWE-502", "unsafe-deserialization", node)
         if name in XXE_PARSERS:
             self._add("CWE-611", "xxe-entity-resolution", node)
+        if name == "tempfile.mktemp":  # CWE-377: deprecated, racy — the file can be swapped between name and use
+            self._add("CWE-377", "insecure-temp-file", node)
         if name in ("yaml.load", "yaml.load_all"):
             loader = kwargs.get("Loader") or (node.args[1] if len(node.args) > 1 else None)
             if loader is None or _dotted(loader).split(".")[-1] in UNSAFE_YAML_LOADERS:

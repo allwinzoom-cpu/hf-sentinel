@@ -280,6 +280,30 @@
    "id": "n_xxe1",
    "expect": [],
    "code": "from defusedxml.ElementTree import parse\ndef load(path):\n    return parse(path)\n"
+  },
+  {
+   "id": "p_tmp0",
+   "expect": [
+    "CWE-377"
+   ],
+   "code": "import tempfile\ndef path():\n    return tempfile.mktemp()\n"
+  },
+  {
+   "id": "p_tmp1",
+   "expect": [
+    "CWE-377"
+   ],
+   "code": "from tempfile import mktemp\ndef path():\n    return mktemp(suffix='.log')\n"
+  },
+  {
+   "id": "n_tmp0",
+   "expect": [],
+   "code": "import tempfile\ndef f():\n    fd, p = tempfile.mkstemp()\n    return p\n"
+  },
+  {
+   "id": "n_tmp1",
+   "expect": [],
+   "code": "import tempfile\ndef f():\n    return tempfile.NamedTemporaryFile(delete=False)\n"
   }
  ]
 }

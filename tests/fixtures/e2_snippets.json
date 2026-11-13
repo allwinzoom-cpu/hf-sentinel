@@ -206,6 +206,49 @@
    "id": "n15",
    "expect": [],
    "code": "import os\ndef path(d, f):\n    return os.path.join(d, f)\n"
+  },
+  {
+   "id": "p_tls0",
+   "expect": [
+    "CWE-295"
+   ],
+   "code": "import requests\ndef fetch(u):\n    return requests.get(u, verify=False)\n"
+  },
+  {
+   "id": "p_tls1",
+   "expect": [
+    "CWE-295"
+   ],
+   "code": "import ssl\ndef ctx():\n    return ssl._create_unverified_context()\n"
+  },
+  {
+   "id": "p_tls2",
+   "expect": [
+    "CWE-295"
+   ],
+   "code": "import httpx\ndef client():\n    return httpx.Client(verify=False)\n"
+  },
+  {
+   "id": "p_tls3",
+   "expect": [
+    "CWE-295"
+   ],
+   "code": "const https = require('https')\nconst agent = new https.Agent({ rejectUnauthorized: false })\n"
+  },
+  {
+   "id": "n_tls0",
+   "expect": [],
+   "code": "import requests\ndef fetch(u):\n    return requests.get(u, verify=True, timeout=5)\n"
+  },
+  {
+   "id": "n_tls1",
+   "expect": [],
+   "code": "import requests\ndef fetch(u):\n    return requests.get(u, timeout=5)\n"
+  },
+  {
+   "id": "n_tls2",
+   "expect": [],
+   "code": "import ssl\ndef ctx():\n    return ssl.create_default_context()\n"
   }
  ]
 }

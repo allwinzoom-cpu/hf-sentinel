@@ -33,6 +33,9 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-95", "js-eval", re.compile(r"(?<![\w.])eval\s*\(\s*(?![\"'`])")),
     ("CWE-502", "pickle", re.compile(r"\bpickle\.loads?\s*\(")),
     ("CWE-327", "weak-hash", re.compile(r"\bhashlib\.(?:md5|sha1)\s*\(|createHash\(\s*[\"'](?:md5|sha1)[\"']")),
+    ("CWE-295", "tls-verification-disabled", re.compile(
+        r"verify\s*=\s*False|check_hostname\s*=\s*False|_create_unverified_context\s*\(|"
+        r"rejectUnauthorized\s*:\s*false|\bCERT_NONE\b")),
 )
 
 
@@ -137,6 +140,13 @@ class _Visitor(ast.NodeVisitor):
             self._add("CWE-327", "weak-hash", node)
         if name in ("eval", "exec") and not _constant(first):
             self._add("CWE-95", "dynamic-eval", node)
+        # CWE-295: disabled TLS/certificate verification — verify=False / check_hostname=False (requests, httpx, aiohttp,
+        # urllib3) or an explicitly unverified SSL context. `verify=False` is almost never benign, so it is high-precision.
+        verify, check_hostname = kwargs.get("verify"), kwargs.get("check_hostname")
+        if (name == "ssl._create_unverified_context"
+                or (isinstance(verify, ast.Constant) and verify.value is False)
+                or (isinstance(check_hostname, ast.Constant) and check_hostname.value is False)):
+            self._add("CWE-295", "tls-verification-disabled", node)
         self.generic_visit(node)
 
 

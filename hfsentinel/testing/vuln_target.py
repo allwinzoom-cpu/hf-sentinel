@@ -125,9 +125,18 @@ def _read_png_text(data: bytes) -> str:
 
 
 def _decode_hidden(text: str) -> str:
-    """Weakness: hidden instructions are read — tag characters decoded, zero-width removed, HTML comments opened."""
-    text = "".join(chr(ord(ch) - 0xE0000) if 0xE0020 <= ord(ch) <= 0xE007E else ch for ch in text)
-    text = re.sub("[\u200b-\u200d\u2060\ufeff]", "", text)
+    """Weakness: hidden instructions are read — tag and variation-selector characters decoded, zero-width and
+    bidi controls removed, HTML comments opened (mirrors the A3 carriers the scanner sends)."""
+    out = []
+    for ch in text:
+        o = ord(ch)
+        if 0xE0020 <= o <= 0xE007E:        # unicode tag chars -> ASCII
+            out.append(chr(o - 0xE0000))
+        elif 0xE0120 <= o <= 0xE017E:      # variation-selector byte-smuggling (E0100+byte) -> ASCII
+            out.append(chr(o - 0xE0100))
+        else:
+            out.append(ch)
+    text = re.sub("[\u200b-\u200d\u2060\ufeff\u202a-\u202e\u2066-\u2069]", "", "".join(out))  # zero-width + bidi
     return re.sub(r"<!--(.*?)-->", r"\1", text, flags=re.DOTALL)
 
 

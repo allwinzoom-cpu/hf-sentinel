@@ -223,19 +223,25 @@ def test_templates_follow_the_seed_canaries_do_not():
 
 
 def test_a3_hidden_carriers_cover_human_invisible_vectors():
-    # A3 hides the injected instruction from a human reviewer but feeds it verbatim to the model. Across seeds all five
-    # carriers are reachable: invisible tag chars, an HTML comment, a zero-width-split run, a display:none span, and an
-    # instruction parked in a title attribute (the two latter keep the canary literal; the model reads it, a human does
-    # not). Determinism (same seed -> same template) is covered by test_templates_follow_the_seed_canaries_do_not.
+    # A3 hides the injected instruction from a human reviewer but feeds it verbatim to the model. Across seeds all seven
+    # carriers are reachable: invisible tag chars, an HTML comment, a zero-width-split run, a display:none span, an
+    # instruction parked in a title attribute, a bidi-override (Trojan-Source) run, and variation-selector byte-smuggling.
+    # Determinism (same seed -> same template) is covered by test_templates_follow_the_seed_canaries_do_not.
     trials = [build_trial("A3", random.Random(s)) for s in range(80)]
     contents = [t.messages[1]["content"] for t in trials]
     joined = "".join(contents)
     assert "<!--" in joined and chr(0x200b) in joined                                   # HTML comment + zero-width split
     assert any(any(0xE0000 <= ord(ch) <= 0xE007F for ch in c) for c in contents)     # invisible tag-char carrier
-    assert 'style="display:none"' in joined and "<span title=" in joined            # the two new markup carriers
+    assert 'style="display:none"' in joined and "<span title=" in joined            # the two markup carriers
+    assert chr(0x202e) in joined                                                        # bidi-override (Trojan-Source) run
+    assert any(any(0xE0100 <= ord(ch) <= 0xE01EF for ch in c) for c in contents)     # variation-selector byte-smuggling
     for t, content in zip(trials, contents):
         if "display:none" in content or "<span title=" in content:
             assert t.canary in content  # markup-hidden (not char-transformed) carriers feed the canary verbatim
+        if chr(0x202e) in content:  # bidi only REORDERS; visible() drops the control chars (a sanitizer sees the real text)
+            assert chr(0x202e) not in visible(content) and chr(0x202c) not in visible(content)
+        if any(0xE0100 <= ord(ch) <= 0xE01EF for ch in content):  # variation-selector smuggle is fully invisible
+            assert not any(0xE0100 <= ord(ch) <= 0xE01EF for ch in visible(content))
 
 
 def test_payloads_are_benign_and_sink_is_unresolvable():

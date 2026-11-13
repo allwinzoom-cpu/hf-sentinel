@@ -19,6 +19,9 @@ DESERIALIZERS = {"pickle.load", "pickle.loads", "cPickle.load", "cPickle.loads",
                  "marshal.load", "marshal.loads", "jsonpickle.decode", "shelve.open", "yaml.unsafe_load",
                  "yaml.unsafe_load_all"}
 UNSAFE_YAML_LOADERS = {"Loader", "UnsafeLoader", "FullLoader"}
+# lxml's default parser resolves external entities (and DTDs), so these are XXE-exposed; the stdlib xml.etree and
+# defusedxml are safe by default and are deliberately not listed (alias tracking keeps them apart).
+XXE_PARSERS = {"lxml.etree.parse", "lxml.etree.fromstring", "lxml.etree.XML", "lxml.etree.iterparse"}
 WEAK_HASHES = {"hashlib.md5", "hashlib.sha1"}
 SQL_METHODS = {"execute", "executemany", "executescript", "raw", "query", "read_sql", "read_sql_query"}
 MAX_CODE_CHARS = 200_000
@@ -36,6 +39,8 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-295", "tls-verification-disabled", re.compile(
         r"verify\s*=\s*False|check_hostname\s*=\s*False|_create_unverified_context\s*\(|"
         r"rejectUnauthorized\s*:\s*false|\bCERT_NONE\b")),
+    # Conservative: only the fully-qualified lxml form, so stdlib ElementTree/defusedxml never match in the fallback path.
+    ("CWE-611", "xxe-entity-resolution", re.compile(r"\blxml\.etree\.(?:parse|fromstring|XML|iterparse)\s*\(")),
 )
 
 
@@ -129,6 +134,8 @@ class _Visitor(ast.NodeVisitor):
             self._add("CWE-89", "sql-built-string", node)
         if name in DESERIALIZERS:
             self._add("CWE-502", "unsafe-deserialization", node)
+        if name in XXE_PARSERS:
+            self._add("CWE-611", "xxe-entity-resolution", node)
         if name in ("yaml.load", "yaml.load_all"):
             loader = kwargs.get("Loader") or (node.args[1] if len(node.args) > 1 else None)
             if loader is None or _dotted(loader).split(".")[-1] in UNSAFE_YAML_LOADERS:

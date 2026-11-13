@@ -249,6 +249,37 @@
    "id": "n_tls2",
    "expect": [],
    "code": "import ssl\ndef ctx():\n    return ssl.create_default_context()\n"
+  },
+  {
+   "id": "p_xxe0",
+   "expect": [
+    "CWE-611"
+   ],
+   "code": "from lxml import etree\ndef load(path):\n    return etree.parse(path)\n"
+  },
+  {
+   "id": "p_xxe1",
+   "expect": [
+    "CWE-611"
+   ],
+   "code": "import lxml.etree\ndef load(x):\n    return lxml.etree.fromstring(x)\n"
+  },
+  {
+   "id": "p_xxe2",
+   "expect": [
+    "CWE-611"
+   ],
+   "code": "from lxml import etree\ndef load(s):\n    return etree.XML(s)\n"
+  },
+  {
+   "id": "n_xxe0",
+   "expect": [],
+   "code": "import xml.etree.ElementTree as ET\ndef load(path):\n    return ET.parse(path)\n"
+  },
+  {
+   "id": "n_xxe1",
+   "expect": [],
+   "code": "from defusedxml.ElementTree import parse\ndef load(path):\n    return parse(path)\n"
   }
  ]
 }

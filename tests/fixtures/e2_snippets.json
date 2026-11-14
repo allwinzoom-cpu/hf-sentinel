@@ -366,6 +366,25 @@
    "id": "n_dbg1",
    "expect": [],
    "code": "def main():\n    app.run(debug=False)\n"
+  },
+  {
+   "id": "p_jwt0",
+   "expect": [
+    "CWE-347"
+   ],
+   "code": "import jwt\ndef verify(t):\n    return jwt.decode(t, verify=False)\n"
+  },
+  {
+   "id": "p_jwt1",
+   "expect": [
+    "CWE-347"
+   ],
+   "code": "import jwt\ndef verify(t, k):\n    return jwt.decode(t, k, options={\"verify_signature\": False})\n"
+  },
+  {
+   "id": "n_jwt0",
+   "expect": [],
+   "code": "import jwt\ndef verify(t, k):\n    return jwt.decode(t, k, algorithms=[\"HS256\"])\n"
   }
  ]
 }

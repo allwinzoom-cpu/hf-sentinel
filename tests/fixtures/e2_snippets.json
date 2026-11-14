@@ -304,6 +304,44 @@
    "id": "n_tmp1",
    "expect": [],
    "code": "import tempfile\ndef f():\n    return tempfile.NamedTemporaryFile(delete=False)\n"
+  },
+  {
+   "id": "p_sec0",
+   "expect": [
+    "CWE-798"
+   ],
+   "code": "AWS_ACCESS_KEY_ID = \"AKIAIOSFODNN7EXAMPLE\"\n"
+  },
+  {
+   "id": "p_sec1",
+   "expect": [
+    "CWE-798"
+   ],
+   "code": "GITHUB_TOKEN = \"ghp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8\"\n"
+  },
+  {
+   "id": "p_sec2",
+   "expect": [
+    "CWE-798"
+   ],
+   "code": "GOOGLE_API_KEY = \"AIza0123456789abcdefghijklmnopqrstuvwxy\"\n"
+  },
+  {
+   "id": "p_sec3",
+   "expect": [
+    "CWE-798"
+   ],
+   "code": "key = \"\"\"-----BEGIN PRIVATE KEY-----\\nMIIBVgIBADANBg\\n-----END PRIVATE KEY-----\"\"\"\n"
+  },
+  {
+   "id": "n_sec0",
+   "expect": [],
+   "code": "import os\nAPI_KEY = os.environ[\"API_KEY\"]\n"
+  },
+  {
+   "id": "n_sec1",
+   "expect": [],
+   "code": "API_KEY = \"YOUR_API_KEY_HERE\"\nPASSWORD = \"changeme\"\n"
   }
  ]
 }

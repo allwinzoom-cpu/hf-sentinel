@@ -44,6 +44,18 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-377", "insecure-temp-file", re.compile(r"\btempfile\.mktemp\s*\(")),
 )
 
+# CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
+# placeholder like "YOUR_API_KEY" or an os.environ lookup never matches — near-zero false positives. Parser-independent
+# (a literal can appear anywhere), so these run on every block regardless of whether the code parses.
+CREDENTIAL_RULES = (
+    ("CWE-798", "hardcoded-private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----")),
+    ("CWE-798", "hardcoded-aws-key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("CWE-798", "hardcoded-github-token", re.compile(r"\bgh[posru]_[A-Za-z0-9]{36}\b")),
+    ("CWE-798", "hardcoded-google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
+    ("CWE-798", "hardcoded-stripe-key", re.compile(r"\b[rs]k_live_[0-9A-Za-z]{24}\b")),
+    ("CWE-798", "hardcoded-slack-token", re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")),
+)
+
 
 @dataclass(frozen=True)
 class Sink:
@@ -164,6 +176,9 @@ def scan_code(text: str) -> list[Sink]:
     """All sinks found in the code blocks of `text` (deduplicated by CWE + rule + line)."""
     found: set[Sink] = set()
     for lang, code in extract_code(text):
+        for cwe, rule, rx in CREDENTIAL_RULES:  # hardcoded secrets are literals, not structure — always scanned
+            for m in rx.finditer(code):
+                found.add(Sink(cwe, rule, code.count("\n", 0, m.start()) + 1))
         tree = None
         if lang in ("", "python", "py", "python3"):
             try:

@@ -342,6 +342,30 @@
    "id": "n_sec1",
    "expect": [],
    "code": "API_KEY = \"YOUR_API_KEY_HERE\"\nPASSWORD = \"changeme\"\n"
+  },
+  {
+   "id": "p_dbg0",
+   "expect": [
+    "CWE-489"
+   ],
+   "code": "from flask import Flask\napp = Flask(__name__)\nif __name__ == '__main__':\n    app.run(debug=True)\n"
+  },
+  {
+   "id": "p_dbg1",
+   "expect": [
+    "CWE-489"
+   ],
+   "code": "def main():\n    app.run(host='0.0.0.0', port=5000, debug=True)\n"
+  },
+  {
+   "id": "n_dbg0",
+   "expect": [],
+   "code": "def main():\n    app.run(host='127.0.0.1', port=5000)\n"
+  },
+  {
+   "id": "n_dbg1",
+   "expect": [],
+   "code": "def main():\n    app.run(debug=False)\n"
   }
  ]
 }

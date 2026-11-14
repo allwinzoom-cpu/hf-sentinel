@@ -42,6 +42,7 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     # Conservative: only the fully-qualified lxml form, so stdlib ElementTree/defusedxml never match in the fallback path.
     ("CWE-611", "xxe-entity-resolution", re.compile(r"\blxml\.etree\.(?:parse|fromstring|XML|iterparse)\s*\(")),
     ("CWE-377", "insecure-temp-file", re.compile(r"\btempfile\.mktemp\s*\(")),
+    ("CWE-489", "debug-mode-enabled", re.compile(r"\.run\s*\([^)]*\bdebug\s*=\s*True")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
@@ -169,6 +170,12 @@ class _Visitor(ast.NodeVisitor):
                 or (isinstance(verify, ast.Constant) and verify.value is False)
                 or (isinstance(check_hostname, ast.Constant) and check_hostname.value is False)):
             self._add("CWE-295", "tls-verification-disabled", node)
+        # CWE-489: a web server started in debug mode — Werkzeug/Flask's debugger exposes an interactive console (RCE)
+        # to anyone who can reach it. `.run(debug=True)` is the idiom and is almost never intended for production.
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "run":
+            debug = kwargs.get("debug")
+            if isinstance(debug, ast.Constant) and debug.value is True:
+                self._add("CWE-489", "debug-mode-enabled", node)
         self.generic_visit(node)
 
 

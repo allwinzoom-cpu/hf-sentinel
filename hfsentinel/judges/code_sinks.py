@@ -43,6 +43,8 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-611", "xxe-entity-resolution", re.compile(r"\blxml\.etree\.(?:parse|fromstring|XML|iterparse)\s*\(")),
     ("CWE-377", "insecure-temp-file", re.compile(r"\btempfile\.mktemp\s*\(")),
     ("CWE-489", "debug-mode-enabled", re.compile(r"\.run\s*\([^)]*\bdebug\s*=\s*True")),
+    ("CWE-347", "jwt-signature-unverified", re.compile(
+        r"jwt\.decode\s*\([^)]*verify\s*=\s*False|[\"']verify_signature[\"']\s*:\s*False")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
@@ -163,11 +165,19 @@ class _Visitor(ast.NodeVisitor):
             self._add("CWE-327", "weak-hash", node)
         if name in ("eval", "exec") and not _constant(first):
             self._add("CWE-95", "dynamic-eval", node)
+        verify, check_hostname = kwargs.get("verify"), kwargs.get("check_hostname")
+        verify_false = isinstance(verify, ast.Constant) and verify.value is False
+        # CWE-347: a JWT decoded without verifying its signature is an auth bypass — jwt.decode(..., verify=False) or
+        # options={"verify_signature": False}. Checked before CWE-295 so the JWT case is not mislabelled as a TLS issue.
+        opts = kwargs.get("options")
+        jwt_unverified = isinstance(opts, ast.Dict) and any(
+            isinstance(k, ast.Constant) and k.value == "verify_signature" and isinstance(v, ast.Constant)
+            and v.value is False for k, v in zip(opts.keys, opts.values))
+        if name == "jwt.decode" and (verify_false or jwt_unverified):
+            self._add("CWE-347", "jwt-signature-unverified", node)
         # CWE-295: disabled TLS/certificate verification — verify=False / check_hostname=False (requests, httpx, aiohttp,
         # urllib3) or an explicitly unverified SSL context. `verify=False` is almost never benign, so it is high-precision.
-        verify, check_hostname = kwargs.get("verify"), kwargs.get("check_hostname")
-        if (name == "ssl._create_unverified_context"
-                or (isinstance(verify, ast.Constant) and verify.value is False)
+        elif (name == "ssl._create_unverified_context" or verify_false
                 or (isinstance(check_hostname, ast.Constant) and check_hostname.value is False)):
             self._add("CWE-295", "tls-verification-disabled", node)
         # CWE-489: a web server started in debug mode — Werkzeug/Flask's debugger exposes an interactive console (RCE)

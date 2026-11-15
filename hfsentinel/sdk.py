@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from hfsentinel.attacks.catalog import load_catalog
 from hfsentinel.controls import resolve_controls, selected_ids
 from hfsentinel.core.system_one import SystemOne, http_client
 from hfsentinel.engines.campaign import run_campaign
@@ -28,8 +29,10 @@ from hfsentinel.engines.governor import Governor, Ledger
 from hfsentinel.engines.planner import build_plan
 from hfsentinel.engines.recon import RECON_BUDGET_USD, RECON_MAX_REQUESTS, TargetProfile, run_recon
 from hfsentinel.engines.strategy_library import StrategyLibrary
+from hfsentinel.events import ProgressCallback, emit
 from hfsentinel.report.build import assemble_report, new_run_id
 from hfsentinel.scope import Attestation, authorize, load_allowed_signers, load_scope
+from hfsentinel.scoring.severity import confirmed
 from hfsentinel.secrets import optional_token
 from hfsentinel.targets.openai_compat import BudgetExceeded
 from hfsentinel.targets.resolve import ResolvedTarget, TargetURIError, client, parse
@@ -150,6 +153,7 @@ def scan(target: str, *,
          system_one_multilingual_url: str | None = None,
          negotiate_features: bool = False,
          db_path: str | None = None,
+         progress: ProgressCallback | None = None,
          controls_config: dict | None = None) -> ScanResult:
     """Run a full scan and return a :class:`ScanResult`.
 
@@ -200,6 +204,27 @@ def scan(target: str, *,
                       "extended": extended}
     accepted = set(inspect.signature(run_campaign).parameters)
     optional_flags = {k: v for k, v in optional_flags.items() if k in accepted}
+
+    # Live progress: emit a start event, then one event per native technique as the campaign finishes it (enriched with
+    # category from the plan, the confirm decision, ASR, and the cumulative request/cost ledger), then a completed event.
+    # The per-technique hook is only wired when the installed run_campaign accepts `progress` (version-tolerant).
+    step_category = {cid: atk.category for cid, atk in load_catalog().by_id().items()}
+    emit(progress, "scan_started", run_id=run_id, target=controls.target,
+         profile=(profile or "standard"), total=sum(1 for s in plan.steps if s.disposition == "run"))
+
+    def _on_technique(run: Any) -> None:
+        snap = gov.ledger.snapshot()
+        outcome = ("confirmed" if confirmed(run.hits, run.trials, run.temp0_hit)
+                   else ("hit" if run.hits else "no-hit"))
+        emit(progress, "technique_done", catalog_id=run.catalog_id, category=step_category.get(run.catalog_id),
+             outcome=outcome, hits=run.hits, trials=run.trials,
+             asr=(run.hits / run.trials if run.trials else None), errors=run.errors,
+             requests=snap.get("requests"),
+             cost_usd=round(gov.ledger.spent_usd, 6))
+
+    if progress is not None and "progress" in accepted:
+        optional_flags["progress"] = _on_technique
+
     result = run_campaign(target_client, gov, plan, trials=controls.target_io.trials,
                           temperature=controls.target_io.temperature, max_tokens=controls.target_io.max_tokens,
                           concurrency=controls.target_io.concurrency, seed=controls.target_io.seed,
@@ -222,6 +247,12 @@ def scan(target: str, *,
         with contextlib.suppress(Exception):  # persistence is best-effort; a store error must not sink a completed scan
             from hfsentinel import store
             store.record_scan(db_path, report_doc)
+
+    final = gov.ledger.snapshot()
+    grade = report_doc.grade.get("overall") if isinstance(report_doc.grade, dict) else report_doc.grade.overall
+    emit(progress, "scan_completed", run_id=run_id, grade=grade,
+         confirmed=len(report_doc.findings), requests=final.get("requests"),
+         cost_usd=round(gov.ledger.spent_usd, 6))
 
     return ScanResult(run_id=run_id, target=target, report=report_doc, findings=list(report_doc.findings),
                       grade=report_doc.grade, decisions=result.decisions, recon=recon, started=started)

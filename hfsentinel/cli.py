@@ -429,6 +429,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          db: Annotated[Path | None, typer.Option("--db", help="Record this scan (summary + per-technique coverage + "
                                                  "confirmed findings) to a SQLite store. Defaults to $HFSENTINEL_DB.")]
          = None,
+         events: Annotated[bool, typer.Option("--events", help="Also emit normalized JSON progress events (one per "
+                                              "line, to stderr) — the same event shape the SDK/API/UI stream.")] = False,
          formats: Annotated[str | None, _opt("md,json,sarif,html,card.", BUD, "--format")] = None,
          push_to: Annotated[str | None, _opt("Private HF dataset repo for reports.", BUD)] = None,
          fail_on: Annotated[str | None, _opt("critical | high | medium.", BUD)] = None,
@@ -503,7 +505,7 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              check_evolution=bool(check_evolution), check_minimization=bool(check_minimization),
              extended=bool(extended),
              check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli,
-             jailbreak=bool(jailbreak), adaptive=bool(adaptive),
+             jailbreak=bool(jailbreak), adaptive=bool(adaptive), emit_events=bool(events),
              db_path=db or os.environ.get("HFSENTINEL_DB"))
 
 
@@ -614,7 +616,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              check_triggered: bool = False, check_obfuscation: bool = False, check_evolution: bool = False,
              check_minimization: bool = False, extended: bool = False,
              check_abliteration: bool = False, judge_cli: str | None = None, jailbreak: bool = False,
-             adaptive: bool = False, db_path: str | Path | None = None) -> None:
+             adaptive: bool = False, emit_events: bool = False, db_path: str | Path | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -642,12 +644,32 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     typer.echo(f"campaign  S3 breadth: {runnable} techniques with native oracles · up to {c.target_io.trials} "
                f"trials each, stopping early once decided")
 
+    # --events: emit the same normalized progress events the SDK/API/UI stream, as JSON lines on stderr (so stdout stays
+    # the human report). One event model across CLI → SDK → API → UI; a lazy import keeps the default path untouched.
+    _emit = None
+    if emit_events:
+        from hfsentinel.attacks.catalog import load_catalog as _load_catalog
+        from hfsentinel.events import scan_event as _scan_event
+        from hfsentinel.scoring.severity import confirmed as _confirmed
+        _catmap = {cid: a.category for cid, a in _load_catalog().by_id().items()}
+
+        def _emit(etype: str, **f) -> None:
+            typer.echo(json.dumps(_scan_event(etype, **f)), err=True)
+        _emit("scan_started", run_id=run_id, target=c.target, total=runnable)
+
     def progress(run: TechniqueRun) -> None:
         tail = (" · stopped by budget" if not run.complete
                 else f" · {run.stopped_early}" if run.stopped_early else "")
         typer.echo(f"  {run.catalog_id:<4} {run.hits}/{run.trials} hits · temp0 "
                    f"{'-' if run.temp0_hit is None else ('hit' if run.temp0_hit else 'no')} · "
                    f"{run.attempts} req · {run.errors} errors{tail}")
+        if _emit:
+            snap = gov.ledger.snapshot()
+            outcome = ("confirmed" if _confirmed(run.hits, run.trials, run.temp0_hit)
+                       else ("hit" if run.hits else "no-hit"))
+            _emit("technique_done", catalog_id=run.catalog_id, category=_catmap.get(run.catalog_id), outcome=outcome,
+                  hits=run.hits, trials=run.trials, asr=(run.hits / run.trials if run.trials else None),
+                  errors=run.errors, requests=snap.get("requests"), cost_usd=round(gov.ledger.spent_usd, 6))
 
     jb_panel, jb_goals = None, None
     if jailbreak:
@@ -722,6 +744,10 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     report_doc = assemble_report(resolved=t, ref=c.target, controls=c, attestation=attestation, recon=recon,
                                  plan=plan, result=result, ledger=gov.ledger.snapshot(), run_id=run_id,
                                  started=started, campaign=campaign, engine_results=engine_results)
+    if _emit:
+        _grade = report_doc.grade.get("overall") if isinstance(report_doc.grade, dict) else report_doc.grade.overall
+        _emit("scan_completed", run_id=run_id, grade=_grade, confirmed=len(report_doc.findings),
+              requests=gov.ledger.snapshot().get("requests"), cost_usd=round(gov.ledger.spent_usd, 6))
     try:
         paths = render.write(report_doc, c.output.out, list(c.output.formats), anchor=render.sarif_anchor(config))
         if c.output.save_transcripts:  # 16.17: full transcripts for confirmed findings only

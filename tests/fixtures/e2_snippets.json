@@ -462,6 +462,54 @@
    "id": "n19",
    "expect": [],
    "code": "import jinja2\ndef render(name):\n    return jinja2.Template(\"<b>{{ name }}</b>\").render(name=name)\n"
+  },
+  {
+   "id": "p22",
+   "expect": [
+    "CWE-79"
+   ],
+   "code": "from django.utils.safestring import mark_safe\ndef r(c):\n    return mark_safe(\"<p>\" + c + \"</p>\")\n"
+  },
+  {
+   "id": "p23",
+   "expect": [
+    "CWE-79"
+   ],
+   "code": "from markupsafe import Markup\ndef r(c):\n    return Markup(f\"<i>{c}</i>\")\n"
+  },
+  {
+   "id": "p24",
+   "expect": [
+    "CWE-79"
+   ],
+   "code": "from jinja2 import Environment\nenv = Environment(autoescape=False)\n"
+  },
+  {
+   "id": "p25",
+   "expect": [
+    "CWE-79"
+   ],
+   "code": "from flask import Markup\ndef r(c):\n    return Markup(c)\n"
+  },
+  {
+   "id": "n20",
+   "expect": [],
+   "code": "from django.utils.html import format_html\ndef r(c):\n    return format_html(\"<p>{}</p>\", c)\n"
+  },
+  {
+   "id": "n21",
+   "expect": [],
+   "code": "from markupsafe import escape\ndef r(c):\n    return escape(c)\n"
+  },
+  {
+   "id": "n22",
+   "expect": [],
+   "code": "from django.utils.safestring import mark_safe\ndef r():\n    return mark_safe(\"<p>static</p>\")\n"
+  },
+  {
+   "id": "n23",
+   "expect": [],
+   "code": "from jinja2 import Environment, select_autoescape\nenv = Environment(autoescape=select_autoescape())\n"
   }
  ]
 }

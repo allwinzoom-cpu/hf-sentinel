@@ -51,6 +51,8 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-1336", "template-injection", re.compile(
         r"\brender_template_string\s*\(\s*(?![\"'])|\.from_string\s*\(\s*(?![\"'])|"
         r"\bjinja2\.Template\s*\(\s*(?![\"'])")),
+    # CWE-79: escape-bypass (mark_safe/Markup on a non-literal) or autoescape explicitly turned off.
+    ("CWE-79", "xss-escape-bypass", re.compile(r"\b(?:mark_safe|Markup)\s*\(\s*(?![\"'])|autoescape\s*=\s*False")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
@@ -190,6 +192,16 @@ class _Visitor(ast.NodeVisitor):
                 or (isinstance(node.func, ast.Attribute) and node.func.attr == "from_string"))
         if ssti and not _constant(first):
             self._add("CWE-1336", "template-injection", node)
+        # CWE-79: cross-site scripting enabled in code. mark_safe()/Markup() exist only to tell the template engine "trust
+        # this HTML, do not escape it"; applied to anything non-constant (user data) that is reflected/stored XSS. A
+        # constant literal is safe. Django's format_html and markupsafe.escape, which DO escape, are never these names.
+        if name.split(".")[-1] in ("mark_safe", "Markup") and not _constant(first):
+            self._add("CWE-79", "xss-escape-bypass", node)
+        # autoescape explicitly turned off on a template environment re-enables HTML injection for every rendered value;
+        # the safe idiom passes a select_autoescape(...) callable (not a Constant), so only a literal False is flagged.
+        autoescape = kwargs.get("autoescape")
+        if isinstance(autoescape, ast.Constant) and autoescape.value is False:
+            self._add("CWE-79", "autoescape-disabled", node)
         verify, check_hostname = kwargs.get("verify"), kwargs.get("check_hostname")
         verify_false = isinstance(verify, ast.Constant) and verify.value is False
         # CWE-347: a JWT decoded without verifying its signature is an auth bypass — jwt.decode(..., verify=False) or

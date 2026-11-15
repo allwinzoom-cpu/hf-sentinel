@@ -73,6 +73,23 @@ def test_ssti_regex_fallback_on_unparsable_code():
     assert code_sinks.cwes('def ok(:\n    render_template_string("static {{x}}", x=v)\n') == set()
 
 
+def test_xss_escape_bypass_vs_safe_escaping():
+    # mark_safe/Markup on untrusted data bypasses escaping (XSS); the escaping helpers and constants are safe
+    assert code_sinks.cwes("from django.utils.safestring import mark_safe\nmark_safe('<p>'+c+'</p>')\n") == {"CWE-79"}
+    assert code_sinks.cwes("from markupsafe import Markup\nMarkup(user)\n") == {"CWE-79"}
+    assert code_sinks.cwes("from django.utils.html import format_html\nformat_html('<p>{}</p>', c)\n") == set()
+    assert code_sinks.cwes("from markupsafe import escape\nescape(user)\n") == set()
+    assert code_sinks.cwes("from django.utils.safestring import mark_safe\nmark_safe('<p>static</p>')\n") == set()
+
+
+def test_xss_autoescape_disabled_only_on_literal_false():
+    assert code_sinks.cwes("from jinja2 import Environment\nEnvironment(autoescape=False)\n") == {"CWE-79"}
+    assert code_sinks.cwes("from jinja2 import Environment, select_autoescape\n"
+                           "Environment(autoescape=select_autoescape())\n") == set()
+    # regex fallback still catches the escape bypass in unparsable code
+    assert code_sinks.cwes("def f(:\n    mark_safe(user)\n") == {"CWE-79"}
+
+
 def test_credential_scan_ignores_placeholders_and_env_lookups():
     assert code_sinks.cwes('import os\nKEY = os.environ["API_KEY"]\nTOKEN = "replace-with-your-token"\n') == set()
 

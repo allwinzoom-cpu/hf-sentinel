@@ -59,6 +59,20 @@ def test_hardcoded_credential_formats_flag_cwe_798(prefix, body):
     assert "CWE-798" in code_sinks.cwes(f'TOKEN = "{prefix}{body}"\n')
 
 
+def test_ssti_alias_tracking_separates_jinja_from_string_template():
+    # jinja2.Template renders its source → SSTI when the source is not a constant; string.Template is safe substitution
+    assert code_sinks.cwes("import jinja2\njinja2.Template(src).render()\n") == {"CWE-1336"}
+    assert code_sinks.cwes("from string import Template\nTemplate(src).substitute(x=1)\n") == set()
+    # a constant template with data passed through the engine context is the safe idiom — no finding
+    assert code_sinks.cwes('from flask import render_template_string\nrender_template_string("{{x}}", x=v)\n') == set()
+
+
+def test_ssti_regex_fallback_on_unparsable_code():
+    # unparsable Python still flags a non-literal template source via the conservative regex fallback
+    assert code_sinks.cwes("def bad(:\n    render_template_string(f'hi {name}')\n") == {"CWE-1336"}
+    assert code_sinks.cwes('def ok(:\n    render_template_string("static {{x}}", x=v)\n') == set()
+
+
 def test_credential_scan_ignores_placeholders_and_env_lookups():
     assert code_sinks.cwes('import os\nKEY = os.environ["API_KEY"]\nTOKEN = "replace-with-your-token"\n') == set()
 

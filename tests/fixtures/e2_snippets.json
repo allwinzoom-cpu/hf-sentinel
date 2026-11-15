@@ -414,6 +414,54 @@
    "id": "n_cred0",
    "expect": [],
    "code": "GITHUB_PAT = os.environ[\"GITHUB_PAT\"]\nTOKEN = \"replace-with-your-token\"\n"
+  },
+  {
+   "id": "p18",
+   "expect": [
+    "CWE-1336"
+   ],
+   "code": "from flask import render_template_string\ndef greet(name):\n    return render_template_string(\"Hello \" + name)\n"
+  },
+  {
+   "id": "p19",
+   "expect": [
+    "CWE-1336"
+   ],
+   "code": "from flask import render_template_string, request\ndef page():\n    return render_template_string(f\"<h1>{request.args.get('n')}</h1>\")\n"
+  },
+  {
+   "id": "p20",
+   "expect": [
+    "CWE-1336"
+   ],
+   "code": "import jinja2\ndef render(src):\n    return jinja2.Template(src).render()\n"
+  },
+  {
+   "id": "p21",
+   "expect": [
+    "CWE-1336"
+   ],
+   "code": "from jinja2 import Environment\ndef render(src):\n    return Environment().from_string(src).render()\n"
+  },
+  {
+   "id": "n16",
+   "expect": [],
+   "code": "from flask import render_template_string\ndef greet(name):\n    return render_template_string(\"<h1>{{ name }}</h1>\", name=name)\n"
+  },
+  {
+   "id": "n17",
+   "expect": [],
+   "code": "from string import Template\ndef greet(name):\n    return Template(\"Hello $name\").substitute(name=name)\n"
+  },
+  {
+   "id": "n18",
+   "expect": [],
+   "code": "from flask import render_template\ndef page(name):\n    return render_template(\"page.html\", name=name)\n"
+  },
+  {
+   "id": "n19",
+   "expect": [],
+   "code": "import jinja2\ndef render(name):\n    return jinja2.Template(\"<b>{{ name }}</b>\").render(name=name)\n"
   }
  ]
 }

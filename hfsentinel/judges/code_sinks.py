@@ -46,6 +46,11 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-347", "jwt-signature-unverified", re.compile(
         r"jwt\.decode\s*\([^)]*verify\s*=\s*False|[\"']verify_signature[\"']\s*:\s*False")),
     ("CWE-732", "world-writable-permissions", re.compile(r"\bchmod\s*\([^)]*,\s*0o?[0-7]*[2367]\s*\)")),
+    # CWE-1336 SSTI: template source that is not a quoted literal (an f-string, a concatenation, or a variable) flowing
+    # into a renderer. A quoted-literal template is excluded; dynamic data belongs in the engine's context, not the source.
+    ("CWE-1336", "template-injection", re.compile(
+        r"\brender_template_string\s*\(\s*(?![\"'])|\.from_string\s*\(\s*(?![\"'])|"
+        r"\bjinja2\.Template\s*\(\s*(?![\"'])")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
@@ -176,6 +181,15 @@ class _Visitor(ast.NodeVisitor):
             self._add("CWE-327", "weak-hash", node)
         if name in ("eval", "exec") and not _constant(first):
             self._add("CWE-95", "dynamic-eval", node)
+        # CWE-1336: server-side template injection. render_template_string / Environment.from_string / jinja2.Template
+        # render their FIRST ARGUMENT as template *source*. A constant literal template is safe (dynamic values belong in
+        # the engine's {{ }} context, passed as kwargs); a source built from or sourced from input lets an attacker inject
+        # template syntax that the engine executes (→ RCE). string.Template's safe $-substitution is kept apart by alias
+        # tracking (string.Template never matches jinja2.Template), so this stays high-precision.
+        ssti = (name.split(".")[-1] == "render_template_string" or name == "jinja2.Template"
+                or (isinstance(node.func, ast.Attribute) and node.func.attr == "from_string"))
+        if ssti and not _constant(first):
+            self._add("CWE-1336", "template-injection", node)
         verify, check_hostname = kwargs.get("verify"), kwargs.get("check_hostname")
         verify_false = isinstance(verify, ast.Constant) and verify.value is False
         # CWE-347: a JWT decoded without verifying its signature is an auth bypass — jwt.decode(..., verify=False) or

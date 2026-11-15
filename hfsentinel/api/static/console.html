@@ -218,6 +218,19 @@ tbody tr:hover{background:var(--surface-2)}
 .note svg{width:14px;height:14px;flex:none}
 .demotag{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);
   background:var(--warn-soft);padding:3px 7px;border-radius:5px}
+tbody tr.hrow{cursor:pointer}
+tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
+.modal{position:fixed;inset:0;z-index:60;background:rgba(10,14,19,.55);display:flex;align-items:flex-start;
+  justify-content:center;padding:max(24px,env(safe-area-inset-top,0px)) 16px 24px;overflow-y:auto}
+.sheet{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);
+  width:100%;max-width:760px}
+.sheet .hd{position:sticky;top:0;background:var(--surface);z-index:1;border-radius:16px 16px 0 0}
+.sheet .x{border:1px solid var(--border);background:var(--surface-2);color:var(--ink-2);width:30px;height:30px;
+  border-radius:8px;font-size:16px;line-height:1}
+.sheet .x:hover{color:var(--ink);border-color:var(--border-strong)}
+.dethead{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid var(--border)}
+.dethead .t{font-family:var(--mono);font-size:13px;word-break:break-all;min-width:0}
+.detsub{font-size:12px;color:var(--ink-3);padding:14px 18px 4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 
 @media (max-width:860px){
   .launch,.runcols,.histgrid{grid-template-columns:1fr}
@@ -364,6 +377,13 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
     </section>
   </main>
+</div>
+
+<div class="modal" id="detail" hidden role="dialog" aria-modal="true" aria-label="Scan detail">
+  <div class="sheet">
+    <div class="hd"><h3 id="detTitle">Scan detail</h3><button class="x" id="detClose" aria-label="Close">×</button></div>
+    <div id="detBody"></div>
+  </div>
 </div>
 
 <script>
@@ -605,6 +625,7 @@ async function loadCatalog(){ // replace the built-in demo catalog with the serv
 async function loadHistory(base,key){
   if(!API.live) return; try{ const r=await fetch((base||API.base)+'/history',{headers:key?{'X-API-Key':key}:{}});
     if(!r.ok) return; const j=await r.json(); const rows=(j.scans||[]).map(s=>({run:(s.run_id||'').slice(0,8),
+      rid:s.run_id, confirmed:s.confirmed||0,
       target:(s.target_ref||'').split('#').pop().slice(0,32),grade:s.grade||'A',
       crit:0,high:0,med:0,low:0,cov:(s.techniques_run||0)+'/'+(s.techniques_total||0),cost:+(s.cost_usd||0)}));
     if(rows.length){ store.set('runs',rows.slice(0,20)); renderHistory(); }
@@ -633,22 +654,70 @@ function saveHistory(){ const h=store.get('runs',[]);
     grade:gradeFromFindings(run.findings),crit:sev.Critical||0,high:sev.High||0,med:sev.Medium||0,low:sev.Low||0,
     cov:run.done+'/'+run.total,cost:+run.cost.toFixed(2)});
   store.set('runs',h.slice(0,20)); renderHistory(); }
+let HIST_ROWS=[];
 function renderHistory(){
-  const rows=[...store.get('runs',[]),...SAMPLE_HISTORY];
-  const tot=rows.length, finds=rows.reduce((a,r)=>a+r.crit+r.high+r.med+r.low,0);
+  HIST_ROWS=[...store.get('runs',[]),...SAMPLE_HISTORY];
+  const rows=HIST_ROWS;
+  const tot=rows.length, finds=rows.reduce((a,r)=>a+(r.confirmed??(r.crit+r.high+r.med+r.low)),0);
   const crit=rows.reduce((a,r)=>a+r.crit,0), cost=rows.reduce((a,r)=>a+r.cost,0);
   $('#stats').innerHTML=[
     ['Scans',tot,'in the store'],['Findings',finds,'confirmed, all scans'],
     ['Critical',crit,'require action'],['Spend','$'+cost.toFixed(2),'priced API cost']
   ].map(s=>`<div class="stat"><div class="k">${s[0]}</div><div class="v tnum">${s[1]}</div><div class="d">${s[2]}</div></div>`).join('');
-  $('#histrows').innerHTML=rows.map(r=>`<tr><td>${r.run}</td><td style="font-family:var(--font)">${r.target}</td>
+  $('#histrows').innerHTML=rows.map((r,i)=>`<tr class="hrow" data-idx="${i}" tabindex="0" title="View coverage &amp; findings">
+    <td>${r.run}</td><td style="font-family:var(--font)">${r.target}</td>
     <td><span class="gpill g-${r.grade}">${r.grade}</span></td>
-    <td>${r.crit+r.high+r.med+r.low}</td><td>${r.cov}</td><td>$${r.cost.toFixed(2)}</td></tr>`).join('');
+    <td>${r.confirmed??(r.crit+r.high+r.med+r.low)}</td><td>${r.cov}</td><td>$${r.cost.toFixed(2)}</td></tr>`).join('');
+  $$('#histrows tr').forEach(tr=>{ const open=()=>openDetail(HIST_ROWS[+tr.dataset.idx]);
+    tr.onclick=open; tr.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();open();} }; });
   const sev={Critical:crit,High:rows.reduce((a,r)=>a+r.high,0),Medium:rows.reduce((a,r)=>a+r.med,0),Low:rows.reduce((a,r)=>a+r.low,0)};
   const max=Math.max(1,...Object.values(sev)); const col={Critical:'var(--crit)',High:'var(--serious)',Medium:'var(--warn)',Low:'var(--ok)'};
   $('#sevbars').innerHTML=Object.entries(sev).map(([k,v])=>`<div class="sevbar"><span class="lab">${k}</span>
     <div class="track"><i style="width:${v/max*100}%;background:${col[k]}"></i></div><span class="n tnum">${v}</span></div>`).join('');
 }
+
+/* ---------- history drill-down ---------- */
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function closeDetail(){ $('#detail').hidden=true; }
+async function openDetail(row){
+  if(!row) return;
+  $('#detTitle').textContent='Scan '+(row.run||'');
+  const body=$('#detBody'); $('#detail').hidden=false;
+  const head=`<div class="dethead"><div style="min-width:0"><div class="t">${esc(row.target)}</div></div>
+    <span class="gpill g-${row.grade}" style="margin-left:auto">${row.grade}</span></div>`;
+  // Live: pull the real coverage + findings from the store; demo rows have no per-technique detail to show.
+  if(row.rid && API.live){
+    body.innerHTML=head+'<p class="hint" style="padding:16px 18px">Loading coverage &amp; findings…</p>';
+    try{ const key=$('#apikey').value.trim();
+      const r=await fetch(API.base+'/history/'+encodeURIComponent(row.rid),{headers:key?{'X-API-Key':key}:{}});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      body.innerHTML=head+renderDetailBody(await r.json());
+    }catch(e){ body.innerHTML=head+`<p class="hint" style="padding:16px 18px">Could not load detail (${esc(e.message)}).</p>`; }
+  } else {
+    const sev=[['Critical',row.crit],['High',row.high],['Medium',row.med],['Low',row.low]].filter(x=>x[1]);
+    body.innerHTML=head+`<div class="detsub">Summary</div>
+      <div class="pad"><p style="margin:0 0 8px">Coverage ${esc(row.cov)} · ${row.confirmed??sev.reduce((a,s)=>a+s[1],0)} confirmed · $${(+row.cost).toFixed(2)}</p>
+      ${sev.map(s=>`<span class="sevtag sev-${s[0]}" style="margin-right:6px">${s[0]} ${s[1]}</span>`).join('')||'<span class="st clear">no findings</span>'}
+      <p class="note" style="margin-top:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      Per-technique coverage &amp; findings load from the live service (connect an API key).</p></div>`;
+  }
+}
+function renderDetailBody(d){
+  const cov=(d.coverage||[]), finds=(d.findings||[]);
+  const covRows=cov.map(c=>{ const st=c.disposition==='run'?(c.outcome==='confirmed'?'confirmed':(c.hits?'hit':'clear')):'skip';
+    return `<div class="tech"><span class="cid">${esc(c.catalog_id)}</span>
+      <span class="nm"><b>${esc(c.category||'')} · ${esc(c.disposition)}</b><span>${esc(c.reason||c.outcome||'')}${c.asr!=null?' · ASR '+Math.round(c.asr*100)+'%':''}</span></span>
+      <span class="st ${st}">${esc(c.severity||c.outcome||c.disposition)}</span></div>`;}).join('');
+  const findCards=finds.map(f=>`<div class="finding sev-${esc(f.severity)}"><div class="top">
+      <span class="sevtag">${esc(f.severity)}</span><b>${esc(f.technique||f.catalog_id)}</b>
+      <span class="cwe">${esc(f.catalog_id)}${f.asr!=null?' · ASR '+Math.round(f.asr*100)+'%':''}</span></div></div>`).join('');
+  return `<div class="detsub">Coverage · ${cov.length} techniques</div><div class="techlist">${covRows||'<p class="hint" style="padding:12px 18px">none</p>'}</div>
+    <div class="detsub">Findings · ${finds.length}</div><div class="pad"><div class="findings">${findCards||'<p class="hint">no confirmed findings</p>'}</div></div>`;
+}
+$('#detClose').onclick=closeDetail;
+$('#detail').onclick=e=>{ if(e.target.id==='detail') closeDetail(); };
+addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#detail').hidden) closeDetail(); });
+
 renderHistory();
 
 show(location.hash.slice(1)||'launch');

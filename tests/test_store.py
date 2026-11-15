@@ -150,7 +150,7 @@ def test_api_service_forwards_db_path_to_every_scan(monkeypatch, tmp_path):
                 return {"run_id": "x", "grade": {}, "findings": []}
         return _R()
 
-    monkeypatch.setattr(api.sdk, "scan", fake_scan)
+    monkeypatch.setattr(sdk, "scan", fake_scan)
     db = str(tmp_path / "service.db")
     client = TestClient(api.create_app(api_keys=["secret"], db_path=db))
     h = {"X-API-Key": "secret"}

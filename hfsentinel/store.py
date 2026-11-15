@@ -133,3 +133,37 @@ def coverage_counts(db_path: str | Path, run_id: str) -> dict[str, int]:
         return {row["disposition"]: row["n"] for row in rows}
     finally:
         conn.close()
+
+
+def recent_scans(db_path: str | Path, *, limit: int = 20, target: str | None = None) -> list[dict]:
+    """The most recent scans (optionally filtered to one target), newest first — for `hfsentinel history`."""
+    conn = connect(db_path)
+    try:
+        sql = ("SELECT run_id, started, target_ref, grade, confirmed, techniques_run, techniques_total, "
+               "techniques_not_run, requests, cost_usd FROM scans")
+        params: tuple = ()
+        if target:
+            sql += " WHERE target_ref = ?"
+            params = (target,)
+        sql += " ORDER BY started DESC LIMIT ?"
+        return [dict(r) for r in conn.execute(sql, (*params, limit)).fetchall()]
+    finally:
+        conn.close()
+
+
+def scan_detail(db_path: str | Path, run_id: str) -> dict | None:
+    """One scan with its per-technique coverage and confirmed findings, or None if the run_id is unknown."""
+    conn = connect(db_path)
+    try:
+        scan = conn.execute("SELECT * FROM scans WHERE run_id=?", (run_id,)).fetchone()
+        if scan is None:
+            return None
+        coverage = [dict(r) for r in conn.execute(
+            "SELECT catalog_id, category, disposition, outcome, reason, hits, trials, asr, severity "
+            "FROM coverage WHERE run_id=? ORDER BY catalog_id", (run_id,)).fetchall()]
+        findings = [dict(r) for r in conn.execute(
+            "SELECT catalog_id, severity, asr, ci_low, ci_high, technique FROM findings WHERE run_id=? "
+            "ORDER BY asr DESC", (run_id,)).fetchall()]
+        return {"scan": dict(scan), "coverage": coverage, "findings": findings}
+    finally:
+        conn.close()

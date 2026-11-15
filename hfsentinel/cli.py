@@ -874,6 +874,55 @@ def report(findings: Annotated[Path, typer.Argument(help="Findings JSON written 
 
 
 @app.command()
+def history(db: Annotated[Path | None, typer.Option("--db", help="Scan store written by `scan --db` "
+                                                    "(defaults to $HFSENTINEL_DB).")] = None,
+            run: Annotated[str | None, typer.Option("--run", help="Show one scan's coverage and findings by run id.")]
+            = None,
+            target: Annotated[str | None, typer.Option("--target", help="Only scans of this target URI.")] = None,
+            limit: Annotated[int, typer.Option("--limit", help="How many recent scans to list.")] = 20) -> None:
+    """Read back past scans from the SQLite store: a recent-scans table, or one scan's coverage + findings with --run."""
+    from hfsentinel import store
+    db_path = db or os.environ.get("HFSENTINEL_DB")
+    if not db_path:
+        raise _fail("no scan store: pass --db or set $HFSENTINEL_DB", EXIT_USAGE)
+    if not Path(db_path).expanduser().is_file():
+        raise _fail(f"scan store not found: {_clean(str(db_path), 160)}", EXIT_INPUT)
+    try:
+        if run:
+            detail = store.scan_detail(db_path, run)
+            if detail is None:
+                raise _fail(f"run id not found in the store: {_clean(run, 80)}", EXIT_INPUT)
+            s = detail["scan"]
+            typer.echo(f"scan      {s['run_id']} · {_clean(s['target_ref'], 80)}")
+            typer.echo(f"grade     {s['grade'] or 'n/a'} · {s['confirmed']} confirmed · "
+                       f"{s['techniques_run']}/{s['techniques_total']} run · {s['requests']} requests")
+            typer.echo(f"{'ID':<4} {'DISPOSITION':<11} {'OUTCOME':<11} {'HITS':>7} {'ASR':>6}  WHY")
+            for c in detail["coverage"]:
+                hits = "-" if c["trials"] in (None, 0) else f"{c['hits']}/{c['trials']}"
+                asr = "-" if c["asr"] is None else f"{c['asr']:.0%}"
+                why = "" if c["disposition"] == "run" else _clean(c["reason"] or "", 48)
+                typer.echo(f"{c['catalog_id']:<4} {c['disposition']:<11} {(c['outcome'] or '-'):<11} {hits:>7} "
+                           f"{asr:>6}  {why}")
+            for f in detail["findings"]:
+                ci = f"{f['ci_low']:.0%}–{f['ci_high']:.0%}" if f["ci_low"] is not None else ""
+                typer.echo(f"finding   {f['catalog_id']:<4} {f['severity']:<9} ASR {f['asr']:.0%} ({ci}) "
+                           f"{_clean(f['technique'] or '', 50)}")
+            return
+        scans = store.recent_scans(db_path, limit=limit, target=target)
+        if not scans:
+            typer.echo("no scans recorded yet")
+            return
+        typer.echo(f"HF-Sentinel scan history · {len(scans)} shown")
+        typer.echo(f"{'STARTED':<21} {'GRADE':<6} {'FIND':>4} {'RUN':>7} {'REQ':>6}  TARGET")
+        for s in scans:
+            cov = f"{s['techniques_run']}/{s['techniques_total']}"
+            typer.echo(f"{_clean(str(s['started'] or ''), 20):<21} {(s['grade'] or '-'):<6} {s['confirmed']:>4} "
+                       f"{cov:>7} {(s['requests'] or 0):>6}  {_clean(s['target_ref'] or '', 60)}")
+    except sqlite3.Error as e:
+        raise _fail(f"could not read the scan store: {_clean(str(e), 120)}", EXIT_INPUT) from None
+
+
+@app.command()
 def job(model: Annotated[str, typer.Argument(help="Hub model id to serve + scan (org/model).", show_default=False)],
         dataset: Annotated[str, typer.Option(help="Private HF dataset repo id (org/name) for the uploaded report.")],
         image: Annotated[str, typer.Option(help="Pinned job image bundling vLLM + hfsentinel.")],

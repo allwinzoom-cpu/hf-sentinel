@@ -51,6 +51,32 @@ def test_record_scan_captures_summary_coverage_and_findings(tmp_path):
     assert f["catalog_id"] == "C2" and f["severity"] == "Critical" and (f["ci_low"], f["ci_high"]) == (0.57, 1.0)
 
 
+def test_history_lists_recent_scans(tmp_path):
+    db = tmp_path / "scans.db"
+    store.record_scan(db, REPORT)
+    res = CliRunner().invoke(cli.app, ["history", "--db", str(db)])
+    assert res.exit_code == 0, res.output
+    assert "scan history" in res.output and "openai+http://x#m" in res.output and " F " in res.output
+
+
+def test_history_run_detail_shows_coverage_and_findings(tmp_path):
+    db = tmp_path / "scans.db"
+    store.record_scan(db, REPORT)
+    res = CliRunner().invoke(cli.app, ["history", "--db", str(db), "--run", "20260101T000000Z-abcd"])
+    assert res.exit_code == 0, res.output
+    assert "B1   not-run" in res.output and "judge" in res.output        # the not-run coverage + reason
+    assert "C2   run" in res.output                                      # a technique that ran
+    assert "finding   C2" in res.output and "Critical" in res.output     # the confirmed finding
+
+
+def test_history_requires_a_store(tmp_path, monkeypatch):
+    monkeypatch.delenv("HFSENTINEL_DB", raising=False)
+    res = CliRunner().invoke(cli.app, ["history"])
+    assert res.exit_code == cli.EXIT_USAGE and "no scan store" in res.output
+    res2 = CliRunner().invoke(cli.app, ["history", "--db", str(tmp_path / "missing.db")])
+    assert res2.exit_code == cli.EXIT_INPUT and "not found" in res2.output
+
+
 def test_record_scan_is_idempotent(tmp_path):
     db = tmp_path / "scans.db"
     store.record_scan(db, REPORT)

@@ -103,6 +103,19 @@ def test_weak_cipher_and_ecb_mode_vs_strong_crypto():
     assert "CWE-327" in code_sinks.cwes("def f(:\n    AES.new(k, AES.MODE_ECB)\n")
 
 
+def test_js_client_side_sinks_in_fenced_blocks():
+    js = lambda b: f"```javascript\n{b}\n```"
+    assert code_sinks.cwes(js('setTimeout("doStuff()", 500)')) == {"CWE-95"}       # string as code
+    assert code_sinks.cwes(js('new Function("a", "return a")')) == {"CWE-95"}
+    assert code_sinks.cwes(js('el.innerHTML = "<b>" + userName')) == {"CWE-79"}    # built from input
+    assert code_sinks.cwes(js('document.write(`<p>${x}</p>`)')) == {"CWE-79"}
+    # safe forms: function reference, constant literal, textContent, sanitized
+    assert code_sinks.cwes(js('setTimeout(doStuff, 500)')) == set()
+    assert code_sinks.cwes(js('el.innerHTML = "<b>static</b>"')) == set()
+    assert code_sinks.cwes(js('el.textContent = userName')) == set()
+    assert code_sinks.cwes(js('el.innerHTML = DOMPurify.sanitize(dirty)')) == set()
+
+
 def test_credential_scan_ignores_placeholders_and_env_lookups():
     assert code_sinks.cwes('import os\nKEY = os.environ["API_KEY"]\nTOKEN = "replace-with-your-token"\n') == set()
 

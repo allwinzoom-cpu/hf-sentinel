@@ -116,6 +116,18 @@ def test_js_client_side_sinks_in_fenced_blocks():
     assert code_sinks.cwes(js('el.innerHTML = DOMPurify.sanitize(dirty)')) == set()
 
 
+def test_ml_deserialization_vs_safe_loaders():
+    # ML (un)pickling runs arbitrary code; the safe-mode kwargs and safetensors are not flagged
+    assert code_sinks.cwes("import torch\ntorch.load(p)\n") == {"CWE-502"}
+    assert code_sinks.cwes("import joblib\njoblib.load(p)\n") == {"CWE-502"}
+    assert code_sinks.cwes("import numpy as np\nnp.load(p, allow_pickle=True)\n") == {"CWE-502"}
+    assert code_sinks.cwes("import pandas as pd\npd.read_pickle(p)\n") == {"CWE-502"}
+    assert code_sinks.cwes("import torch\ntorch.load(p, weights_only=True)\n") == set()   # safe mode
+    assert code_sinks.cwes("import numpy as np\nnp.load(p)\n") == set()                    # allow_pickle defaults False
+    assert code_sinks.cwes("from safetensors.torch import load_file\nload_file(p)\n") == set()  # the safe alternative
+    assert "CWE-502" in code_sinks.cwes("def f(:\n    torch.load(p)\n")                    # regex fallback
+
+
 def test_credential_scan_ignores_placeholders_and_env_lookups():
     assert code_sinks.cwes('import os\nKEY = os.environ["API_KEY"]\nTOKEN = "replace-with-your-token"\n') == set()
 

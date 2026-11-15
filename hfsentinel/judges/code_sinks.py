@@ -17,7 +17,11 @@ SUBPROCESS_FUNCS = {"run", "call", "check_call", "check_output", "Popen", "getou
 SHELL_FUNCS = {"os.system", "os.popen", "commands.getoutput", "subprocess.getoutput", "subprocess.getstatusoutput"}
 DESERIALIZERS = {"pickle.load", "pickle.loads", "cPickle.load", "cPickle.loads", "dill.load", "dill.loads",
                  "marshal.load", "marshal.loads", "jsonpickle.decode", "shelve.open", "yaml.unsafe_load",
-                 "yaml.unsafe_load_all"}
+                 "yaml.unsafe_load_all",
+                 # ML (un)pickling that runs arbitrary code when loading an untrusted model/array — the classic ML
+                 # supply-chain RCE. joblib/pandas pickle unconditionally; torch.load and numpy.load are handled with
+                 # their safe-mode kwargs below (weights_only / allow_pickle).
+                 "joblib.load", "pandas.read_pickle"}
 UNSAFE_YAML_LOADERS = {"Loader", "UnsafeLoader", "FullLoader"}
 # lxml's default parser resolves external entities (and DTDs), so these are XXE-exposed; the stdlib xml.etree and
 # defusedxml are safe by default and are deliberately not listed (alias tracking keeps them apart).
@@ -42,6 +46,9 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
         r"\s*\+)", re.IGNORECASE)),
     ("CWE-95", "js-eval", re.compile(r"(?<![\w.])eval\s*\(\s*(?![\"'`])")),
     ("CWE-502", "pickle", re.compile(r"\bpickle\.loads?\s*\(")),
+    ("CWE-502", "ml-deserialization", re.compile(
+        r"\b(?:torch\.load|joblib\.load|pandas\.read_pickle)\s*\(|\bnp(?:y)?\.load\s*\([^)]*allow_pickle\s*=\s*True|"
+        r"\bnumpy\.load\s*\([^)]*allow_pickle\s*=\s*True")),
     ("CWE-327", "weak-hash", re.compile(r"\bhashlib\.(?:md5|sha1)\s*\(|createHash\(\s*[\"'](?:md5|sha1)[\"']")),
     ("CWE-295", "tls-verification-disabled", re.compile(
         r"verify\s*=\s*False|check_hostname\s*=\s*False|_create_unverified_context\s*\(|"
@@ -183,6 +190,14 @@ class _Visitor(ast.NodeVisitor):
                 and _builds_sql(first):
             self._add("CWE-89", "sql-built-string", node)
         if name in DESERIALIZERS:
+            self._add("CWE-502", "unsafe-deserialization", node)
+        # CWE-502 (ML): torch.load unpickles arbitrary code unless weights_only=True; numpy.load only when allow_pickle
+        # is explicitly True (its default is safe). Alias-tracked, so only the real torch/numpy calls match.
+        weights_only = kwargs.get("weights_only")
+        if name == "torch.load" and not (isinstance(weights_only, ast.Constant) and weights_only.value is True):
+            self._add("CWE-502", "unsafe-deserialization", node)
+        allow_pickle = kwargs.get("allow_pickle")
+        if name in ("numpy.load", "np.load") and isinstance(allow_pickle, ast.Constant) and allow_pickle.value is True:
             self._add("CWE-502", "unsafe-deserialization", node)
         if name in XXE_PARSERS:
             self._add("CWE-611", "xxe-entity-resolution", node)

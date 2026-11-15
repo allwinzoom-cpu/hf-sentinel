@@ -17,10 +17,11 @@ will be decided by the calibrated judge panel (`judges.ensemble.Panel`).
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hfsentinel.attacks import scaffolds
 from hfsentinel.attacks.canary import CANARY_IDS, CanaryRun
@@ -71,10 +72,15 @@ class CampaignResult:
     evolution: dict = field(default_factory=dict)  # LSCAN-042: Laya-advised mutation-operator preference
     minimization: dict = field(default_factory=dict)  # LSCAN-031: minimized recipe of a confirmed escalation
     adaptive_tree: dict = field(default_factory=dict)  # traced Tree-of-Attacks-with-Pruning outcome
+    on_decision: Any = field(default=None, repr=False, compare=False)  # optional live sink: called with each decision
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
-        self.decisions.append({"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
-                               "source": "system-one" if advisory else "campaign"})
+        record = {"stage": stage, "catalog_id": catalog_id, "action": action, "why": why,
+                  "source": "system-one" if advisory else "campaign"}
+        self.decisions.append(record)
+        if self.on_decision is not None:
+            with contextlib.suppress(Exception):   # a live subscriber must never disturb the campaign
+                self.on_decision(record)
 
 
 def _observations(profile: TargetProfile) -> list[str]:
@@ -99,8 +105,9 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  check_abliteration: bool = False, jailbreak_goals=None, adaptive_attacker=None, adaptive_turns: int = 5,
                  check_triggered: bool = False, check_obfuscation: bool = False, check_evolution: bool = False,
                  check_minimization: bool = False, extended: bool = False,
-                 progress=lambda run: None) -> CampaignResult:
+                 progress=lambda run: None, on_decision=None) -> CampaignResult:
     res = CampaignResult()
+    res.on_decision = on_decision
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
     s1 = system_one if (system_one is not None and system_one.available) else None
     if s1 is not None and profile is not None:

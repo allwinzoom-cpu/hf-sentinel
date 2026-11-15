@@ -225,6 +225,13 @@ def scan(target: str, *,
     if progress is not None and "progress" in accepted:
         optional_flags["progress"] = _on_technique
 
+    def _on_decision(record: dict) -> None:  # every stage logs decisions here, so this covers the whole kill-chain live
+        emit(progress, "decision", stage=record.get("stage"), catalog_id=record.get("catalog_id"),
+             action=record.get("action"), why=record.get("why"))
+
+    if progress is not None and "on_decision" in accepted:
+        optional_flags["on_decision"] = _on_decision
+
     result = run_campaign(target_client, gov, plan, trials=controls.target_io.trials,
                           temperature=controls.target_io.temperature, max_tokens=controls.target_io.max_tokens,
                           concurrency=controls.target_io.concurrency, seed=controls.target_io.seed,

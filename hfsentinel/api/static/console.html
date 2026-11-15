@@ -576,6 +576,9 @@ function handleEvent(d){ /* bridges the server event stream → the same rendere
     if(d.cost_usd!=null){run.cost=d.cost_usd;$('#kCost').textContent=(+d.cost_usd).toFixed(2);}
     logLine(d.catalog_id, st==='confirmed'?'find':(st==='hit'?'hit':'clear'),
       d.outcome+(d.asr!=null?' · ASR '+Math.round(d.asr*100)+'%':'')); }
+  else if(d.type==='decision'){ // every stage logs decisions → full kill-chain visibility, not just the breadth sweep
+    setStatus('running', d.stage?('stage '+d.stage):'scanning');
+    logLine(d.stage||'·','info',(d.catalog_id&&d.catalog_id!=='*'?d.catalog_id+' · ':'')+(d.action||'')+(d.why?' — '+d.why:'')); }
   else if(d.type==='scan_completed'){ setStatus('done','completed'); if(d.grade) setGrade(d.grade);
     if(d.requests!=null){$('#kReq').textContent=d.requests;} if(d.cost_usd!=null){$('#kCost').textContent=(+d.cost_usd).toFixed(2);} }
   else if(d.type==='scan_closed'){ setStatus('done','completed'); }

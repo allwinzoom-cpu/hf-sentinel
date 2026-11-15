@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import sqlite3
 import time
 from enum import Enum
 from pathlib import Path
@@ -422,6 +423,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          max_minutes: Annotated[int | None, _opt("Wall-clock cap.", BUD)] = None,
          max_requests: Annotated[int | None, _opt("Request cap.", BUD)] = None,
          out: Annotated[Path | None, _opt("Report directory.", BUD)] = None,
+         db: Annotated[Path | None, typer.Option("--db", help="Record this scan (summary + per-technique coverage + "
+                                                 "confirmed findings) to a SQLite store. Defaults to $HFSENTINEL_DB.")]
+         = None,
          formats: Annotated[str | None, _opt("md,json,sarif,html,card.", BUD, "--format")] = None,
          push_to: Annotated[str | None, _opt("Private HF dataset repo for reports.", BUD)] = None,
          fail_on: Annotated[str | None, _opt("critical | high | medium.", BUD)] = None,
@@ -487,7 +491,8 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
              check_evolution=bool(check_evolution), check_minimization=bool(check_minimization),
              extended=bool(extended),
              check_abliteration=bool(abliteration), nli_scorer=_nli_scorer_from(nli_url), judge_cli=judge_cli,
-             jailbreak=bool(jailbreak), adaptive=bool(adaptive))
+             jailbreak=bool(jailbreak), adaptive=bool(adaptive),
+             db_path=db or os.environ.get("HFSENTINEL_DB"))
 
 
 def _run_engines(t: ResolvedTarget, c, plan, config: Path | None, *, system_one=None, use_judges: bool = False,
@@ -597,7 +602,7 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              check_triggered: bool = False, check_obfuscation: bool = False, check_evolution: bool = False,
              check_minimization: bool = False, extended: bool = False,
              check_abliteration: bool = False, judge_cli: str | None = None, jailbreak: bool = False,
-             adaptive: bool = False) -> None:
+             adaptive: bool = False, db_path: str | Path | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
     started = dt.datetime.now(dt.timezone.utc)
@@ -723,6 +728,13 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                    f"{f.asr_ci95[1]:.0%}) {_clean(f.technique, 60)}")
     for p in paths:
         typer.echo(f"report    {_clean(p, 200)}")
+    if db_path:  # capture every scan (summary + per-technique coverage + confirmed findings) to the durable store
+        try:
+            from hfsentinel import store
+            store.record_scan(db_path, report_doc)
+            typer.echo(f"store     recorded scan {run_id} to {_clean(str(db_path), 160)}")
+        except (OSError, sqlite3.Error) as e:
+            typer.echo(f"store     could not record scan (continuing): {_clean(str(e), 120)}")
     fail_on = c.output.fail_on.capitalize()
     if any(at_least(f.severity, fail_on) for f in report_doc.findings):
         raise _fail(f"confirmed finding at or above --fail-on {c.output.fail_on}", EXIT_FINDINGS)

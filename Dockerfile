@@ -28,6 +28,10 @@ FROM runtime AS test
 USER root
 COPY requirements/dev.lock /tmp/dev.lock
 RUN pip install --require-hashes --only-binary=:all: -r /tmp/dev.lock && rm /tmp/dev.lock
+# The optional `api` extra (FastAPI/uvicorn) is installed in the TEST image only — never in the lean runtime image — so CI
+# exercises the HTTP API layer inside the same no-network, read-only container. Hash-pinned, constrained by core.lock.
+COPY requirements/api.lock /tmp/api.lock
+RUN pip install --require-hashes --only-binary=:all: -r /tmp/api.lock && rm /tmp/api.lock
 COPY --chown=root:root pyproject.toml test_plan.py hf-llm-security-scanner-project-plan.md action.yml /app/
 COPY --chown=root:root .github/workflows/upstream.yml /app/.github/workflows/upstream.yml
 COPY --chown=root:root tests/ /app/tests/

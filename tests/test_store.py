@@ -77,6 +77,26 @@ def test_history_requires_a_store(tmp_path, monkeypatch):
     assert res2.exit_code == cli.EXIT_INPUT and "not found" in res2.output
 
 
+def test_prune_keeps_the_most_recent_and_cascades(tmp_path):
+    import copy
+    db = tmp_path / "scans.db"
+    for i in range(5):
+        r = copy.deepcopy(REPORT)
+        r["run"]["run_id"] = f"run-{i}"
+        r["run"]["started_at"] = f"2026-01-0{i + 1}T00:00:00+00:00"   # run-4 is the most recent
+        store.record_scan(db, r)
+    removed = store.prune(db, keep=2)
+    assert removed == 3
+    conn = sqlite3.connect(db)
+    kept = {row[0] for row in conn.execute("SELECT run_id FROM scans").fetchall()}
+    assert kept == {"run-3", "run-4"}                                  # the two most recent by started
+    # coverage + findings of pruned runs are gone; the kept ones remain
+    assert conn.execute("SELECT COUNT(*) FROM coverage WHERE run_id='run-0'").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM findings WHERE run_id='run-0'").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM coverage WHERE run_id='run-4'").fetchone()[0] == 3
+    assert store.prune(db, keep=2) == 0                                # idempotent once at/under the cap
+
+
 def test_record_scan_is_idempotent(tmp_path):
     db = tmp_path / "scans.db"
     store.record_scan(db, REPORT)

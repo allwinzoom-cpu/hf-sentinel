@@ -167,3 +167,21 @@ def scan_detail(db_path: str | Path, run_id: str) -> dict | None:
         return {"scan": dict(scan), "coverage": coverage, "findings": findings}
     finally:
         conn.close()
+
+
+def prune(db_path: str | Path, *, keep: int = 1000) -> int:
+    """Retention: keep only the ``keep`` most recent scans (by ``started``); delete older scans and their coverage +
+    findings. Returns how many scans were removed. A long-running service records every scan, so a deployment runs this
+    (e.g. on a schedule) to bound the store. ``keep`` is floored at 0; one transaction, so it is all-or-nothing."""
+    conn = connect(db_path)
+    try:
+        with conn:  # single transaction
+            stale = [r["run_id"] for r in conn.execute(
+                "SELECT run_id FROM scans ORDER BY started DESC LIMIT -1 OFFSET ?", (max(0, keep),)).fetchall()]
+            for run_id in stale:
+                conn.execute("DELETE FROM coverage WHERE run_id=?", (run_id,))
+                conn.execute("DELETE FROM findings WHERE run_id=?", (run_id,))
+                conn.execute("DELETE FROM scans WHERE run_id=?", (run_id,))
+        return len(stale)
+    finally:
+        conn.close()

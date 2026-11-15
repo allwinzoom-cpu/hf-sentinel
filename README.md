@@ -26,6 +26,8 @@ with per-scan **drill-down** — drives the same API, same-origin:
 
 - `GET /` — the console (static) · `GET /catalog` — profiles, categories, techniques, rule packs (the UI's options)
 - `POST /scans` — queue a scan; returns `job_id` + a per-job `stream_token` · `GET /scans/{id}` — status / final report
+- `DELETE /scans/{id}` — cancel a queued or running scan (the Stop button in the console); cooperative, so the campaign
+  stops at its next technique/stage boundary and the job settles to `cancelled` with a **partial** report still returned
 - `GET /scans/{id}/events` — Server-Sent Events (live progress), authenticated by the stream token, so the API key
   never appears in a URL or access log
 - `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, confirmed findings
@@ -42,6 +44,9 @@ hfsentinel scan <target> --scope scope.yaml --db scans.db --events   # record ev
 hfsentinel history --db scans.db [--run <id>]                         # list recent scans, or one scan's coverage+findings
 hfsentinel prune   --db scans.db --keep 1000                         # retention: keep the newest N, drop older scans
 ```
+
+Press `Ctrl-C` during a `hfsentinel scan` to cancel gracefully: the campaign stops at the next boundary and still writes a
+partial report (press it again to abort hard).
 
 ## Running in containers
 

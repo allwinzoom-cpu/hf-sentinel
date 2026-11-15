@@ -46,6 +46,10 @@ ESCALATE_TRIALS = 8  # small per-mutator batch; the first mutator that confirms 
 BON_MAX_TRIALS = 24
 
 
+class _ScanCancelled(Exception):
+    """Internal: raised at a stage boundary when the operator cancels, to unwind to the finalization point."""
+
+
 @dataclass
 class CampaignResult:
     runs: list[TechniqueRun] = field(default_factory=list)
@@ -72,6 +76,7 @@ class CampaignResult:
     evolution: dict = field(default_factory=dict)  # LSCAN-042: Laya-advised mutation-operator preference
     minimization: dict = field(default_factory=dict)  # LSCAN-031: minimized recipe of a confirmed escalation
     adaptive_tree: dict = field(default_factory=dict)  # traced Tree-of-Attacks-with-Pruning outcome
+    cancelled: bool = False  # operator cancelled the scan; remaining techniques/stages reported as not run
     on_decision: Any = field(default=None, repr=False, compare=False)  # optional live sink: called with each decision
 
     def decide(self, stage: str, catalog_id: str, action: str, why: str, *, advisory: bool = False) -> None:
@@ -105,9 +110,19 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
                  check_abliteration: bool = False, jailbreak_goals=None, adaptive_attacker=None, adaptive_turns: int = 5,
                  check_triggered: bool = False, check_obfuscation: bool = False, check_evolution: bool = False,
                  check_minimization: bool = False, extended: bool = False,
-                 progress=lambda run: None, on_decision=None) -> CampaignResult:
+                 progress=lambda run: None, on_decision=None, cancel=None) -> CampaignResult:
     res = CampaignResult()
     res.on_decision = on_decision
+
+    def _should_cancel() -> bool:
+        # `cancel` is an operator-supplied predicate (e.g. a threading.Event's is_set). A buggy predicate must never
+        # take the scan down, so any error is treated as "not cancelled" and the sweep continues.
+        if cancel is None:
+            return False
+        try:
+            return bool(cancel())
+        except Exception:  # noqa: BLE001 - a flaky cancel predicate must not crash the campaign
+            return False
     res.decide("S1", "*", "recon" if plan.recon else "no recon", "target profile drives S2 dispositions")
     s1 = system_one if (system_one is not None and system_one.available) else None
     if s1 is not None and profile is not None:
@@ -138,10 +153,18 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         res.decide("S2", t.choice if not t.escalate() else "*", "technique advice",
                    f"System-1 favours {t.choice} (conf {t.confidence}); advisory — planner order is authoritative",
                    advisory=True)
+    if _should_cancel():  # cancelled while still queued / before any target traffic: finalize an empty report at once
+        res.cancelled = True
+        res.decide("S2", "*", "cancelled", "operator cancelled the scan before any technique ran")
+        return res
     canaries = CanaryRun(seed, **({"sink_host": sink_host} if sink_host else {}))
     _bon_stage(res, target, canaries=canaries, plan=plan, trials=trials, max_tokens=max_tokens, seed=seed)
     _multilingual_stage(res, target, plan=plan, max_tokens=max_tokens, seed=seed)
     for attack_id in runnable:
+        if _should_cancel():  # stop at the technique boundary: no new technique begins, remaining ones report not-run
+            res.cancelled = True
+            res.decide("S3", attack_id, "cancelled", "operator cancelled the scan; remaining techniques not run")
+            break
         run = run_technique(target, gov, attack_id, trials=trials, temperature=temperature, max_tokens=max_tokens,
                             concurrency=concurrency, canaries=canaries, seed=seed, adaptive=True,
                             keep_transcripts=keep_transcripts)
@@ -169,6 +192,8 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
     # the orchestration boundary so the scan always finalizes a partial report instead of aborting mid-stage; once
     # the ledger is exhausted every further target call raises immediately, so there is nothing to gain by going on.
     try:
+        if _should_cancel():  # cancelled during the breadth sweep: skip every post-sweep stage, finalize a partial report
+            raise _ScanCancelled
         if reference_set:
             _memorization_stage(res, target, gov, reference_set=reference_set, max_tokens=max_tokens, seed=seed,
                                 keep_transcripts=keep_transcripts)
@@ -232,6 +257,9 @@ def run_campaign(target, gov: Governor, plan: Plan, *, trials: int, temperature:
         _active_output_stage(res, target, plan, seed=seed, max_tokens=max_tokens)
         _prefill_stage(res, target, plan, profile=profile, canaries=canaries, max_tokens=max_tokens)
         _many_shot_delivery_stage(res, target, plan, canaries=canaries, seed=seed, max_tokens=max_tokens)
+    except _ScanCancelled:
+        res.cancelled = True
+        res.decide("S3", "*", "cancelled", "operator cancelled the scan; post-sweep stages not run")
     except BudgetExceeded:
         res.decide("S3", "*", "budget/time reached",
                    "stopped remaining stages on budget exhaustion; finalizing a partial report")

@@ -1,0 +1,655 @@
+<title>Sentinel Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Operator console for a black-box LLM security scanner: launch scans, watch them stream, review findings.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout concept: an operator console — fixed command header, left config rail, right live-stream main; cool slate ink, one teal signal accent, reserved severity ramp. */
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9; --surface-3:#e9eef3;
+  --border:#d5dde6; --border-strong:#c0cad6;
+  --ink:#141a22; --ink-2:#4c5a6b; --ink-3:#8795a6;
+  --accent:#0c8577; --accent-2:#0a6e62; --accent-soft:#d5efeb; --on-accent:#ffffff;
+  --ok:#2e9e5b; --warn:#b5871a; --serious:#cf6a2e; --crit:#c53a32;
+  --ok-soft:#dcefe3; --warn-soft:#f4ebd3; --serious-soft:#f6e5d8; --crit-soft:#f6dcda;
+  --shadow:0 1px 2px rgba(20,26,34,.06),0 8px 24px rgba(20,26,34,.06);
+  --font:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0a0e13; --surface:#121820; --surface-2:#161d27; --surface-3:#1d2733;
+  --border:#263241; --border-strong:#33465a;
+  --ink:#e7eef6; --ink-2:#9fb1c4; --ink-3:#637387;
+  --accent:#2dd4bf; --accent-2:#5fe3d2; --accent-soft:#113531; --on-accent:#04201c;
+  --ok:#3ecf7a; --warn:#e2b23e; --serious:#f0894c; --crit:#f05a50;
+  --ok-soft:#102a1c; --warn-soft:#2c2410; --serious-soft:#2e1d12; --crit-soft:#2e1413;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0a0e13; --surface:#121820; --surface-2:#161d27; --surface-3:#1d2733;
+  --border:#263241; --border-strong:#33465a;
+  --ink:#e7eef6; --ink-2:#9fb1c4; --ink-3:#637387;
+  --accent:#2dd4bf; --accent-2:#5fe3d2; --accent-soft:#113531; --on-accent:#04201c;
+  --ok:#3ecf7a; --warn:#e2b23e; --serious:#f0894c; --crit:#f05a50;
+  --ok-soft:#102a1c; --warn-soft:#2c2410; --serious-soft:#2e1d12; --crit-soft:#2e1413;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:40;background:var(--surface)}
+h1,h2,h3{margin:0;text-wrap:balance}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+a{color:var(--accent)}
+.mono{font-family:var(--mono)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---- shell ---- */
+.app{min-height:100%;display:flex;flex-direction:column}
+.cmd{position:sticky;top:env(safe-area-inset-top,0px);z-index:41;background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.mark{width:28px;height:28px;flex:none;border-radius:7px;background:
+  radial-gradient(circle at 30% 28%,var(--accent-2),var(--accent) 70%);display:grid;place-items:center;color:var(--on-accent);
+  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset}
+.mark svg{width:16px;height:16px}
+.brand b{font-weight:700;letter-spacing:-.01em}
+.brand span{color:var(--ink-3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.tabs{display:flex;gap:2px;background:var(--surface-3);padding:3px;border-radius:9px}
+.tabs button{border:0;background:transparent;color:var(--ink-2);padding:6px 13px;border-radius:7px;font-weight:600;font-size:13px}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.cmd .sp{flex:1}
+.icbtn{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);width:34px;height:34px;border-radius:9px;
+  display:grid;place-items:center}
+.icbtn:hover{border-color:var(--border-strong);color:var(--ink)}
+.icbtn svg{width:17px;height:17px}
+
+.wrap{flex:1;width:100%;max-width:1320px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:20px}
+
+/* ---- cards ---- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+.card h3{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600}
+.pad{padding:18px}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border)}
+
+/* ---- launch layout ---- */
+.launch{display:grid;grid-template-columns:1.1fr .9fr;gap:18px;align-items:start}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field:last-child{margin-bottom:0}
+label.lbl{font-size:12px;font-weight:600;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em}
+.hint{font-size:12px;color:var(--ink-3)}
+input[type=text],input[type=password],input[type=number],select{
+  width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--ink);
+  font-family:var(--mono);font-size:13px}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1;min-width:0}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--border);background:var(--surface-2);color:var(--ink-2);padding:7px 12px;border-radius:999px;
+  font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;transition:.12s}
+.chip:hover{border-color:var(--border-strong);color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2)}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
+.chip small{font-family:var(--mono);opacity:.7;font-weight:500}
+
+.toggle{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;
+  background:var(--surface-2);font-size:13px;font-weight:500}
+.toggle input{accent-color:var(--accent);width:16px;height:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+.launchbtn{width:100%;margin-top:4px;border:0;border-radius:11px;padding:13px;font-weight:700;font-size:15px;
+  background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;gap:9px;
+  box-shadow:0 6px 18px -6px var(--accent)}
+.launchbtn:hover{background:var(--accent-2)}
+.launchbtn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.launchbtn svg{width:18px;height:18px}
+
+.packgrid{display:grid;gap:9px}
+.pack{text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:11px;padding:12px 13px;
+  display:flex;gap:12px;align-items:flex-start}
+.pack:hover{border-color:var(--border-strong)}
+.pack[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.pack .pk{width:30px;height:30px;border-radius:8px;flex:none;display:grid;place-items:center;background:var(--surface-3);color:var(--accent-2)}
+.pack[aria-pressed="true"] .pk{background:var(--accent);color:var(--on-accent)}
+.pack .pk svg{width:16px;height:16px}
+.pack b{display:block;font-size:13.5px}
+.pack span{font-size:12px;color:var(--ink-3)}
+
+/* ---- live run ---- */
+.runhead{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center}
+.gradeorb{width:84px;height:84px;border-radius:18px;display:grid;place-items:center;font-size:40px;font-weight:700;
+  font-family:var(--mono);border:2px solid var(--border);background:var(--surface-2);color:var(--ink-3);position:relative}
+.gradeorb small{position:absolute;bottom:8px;font-size:9px;letter-spacing:.1em;color:var(--ink-3);font-weight:600}
+.gradeorb.g-A{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.gradeorb.g-B{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.gradeorb.g-C{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.gradeorb.g-D{color:var(--serious);border-color:var(--serious);background:var(--serious-soft)}
+.gradeorb.g-F{color:var(--crit);border-color:var(--crit);background:var(--crit-soft)}
+.runtarget{min-width:0}
+.runtarget .t{font-family:var(--mono);font-size:14px;font-weight:500;word-break:break-all}
+.statuspill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;
+  background:var(--surface-3);color:var(--ink-2);margin-top:6px}
+.statuspill .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.statuspill.live .pulse{animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.statuspill.live .pulse{animation:none}}
+
+.progress{height:8px;border-radius:999px;background:var(--surface-3);overflow:hidden;margin-top:16px}
+.progress>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  border-radius:999px;transition:width .4s ease}
+
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+.kpi{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:13px 14px}
+.kpi .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600}
+.kpi .v{font-family:var(--mono);font-size:24px;font-weight:600;margin-top:3px;letter-spacing:-.02em}
+.kpi .v small{font-size:13px;color:var(--ink-3)}
+
+.runcols{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;margin-top:18px;align-items:start}
+.techlist{display:flex;flex-direction:column}
+.tech{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--border)}
+.tech:last-child{border-bottom:0}
+.tech .cid{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink-2);width:34px}
+.tech .nm{min-width:0}
+.tech .nm b{font-weight:600;font-size:13.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tech .nm span{font-size:11.5px;color:var(--ink-3)}
+.tech .st{font-size:11px;font-weight:600;font-family:var(--mono);padding:3px 8px;border-radius:6px;white-space:nowrap}
+.st.queued{background:var(--surface-3);color:var(--ink-3)}
+.st.running{background:var(--accent-soft);color:var(--accent-2)}
+.st.confirmed{background:var(--crit-soft);color:var(--crit)}
+.st.hit{background:var(--serious-soft);color:var(--serious)}
+.st.clear{background:var(--ok-soft);color:var(--ok)}
+.st.skip{background:var(--surface-3);color:var(--ink-3)}
+.tech .spin{display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 1s infinite}
+
+.logwrap{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+.logwrap .hd{background:var(--surface);border-radius:0}
+.log{font-family:var(--mono);font-size:12px;line-height:1.7;padding:12px 14px;height:360px;overflow-y:auto;min-width:0}
+.log .ln{display:flex;gap:9px;white-space:pre-wrap;word-break:break-word}
+.log .ts{color:var(--ink-3);flex:none}
+.log .ev{flex:none;font-weight:600;width:84px}
+.log .msg{color:var(--ink-2);min-width:0}
+.ev.e-start{color:var(--accent-2)} .ev.e-hit{color:var(--serious)} .ev.e-find{color:var(--crit)}
+.ev.e-clear{color:var(--ok)} .ev.e-info{color:var(--ink-3)} .ev.e-done{color:var(--accent-2)}
+
+.findings{display:flex;flex-direction:column;gap:10px}
+.finding{border:1px solid var(--border);border-left-width:3px;border-radius:10px;padding:12px 14px;background:var(--surface-2)}
+.finding.sev-Critical{border-left-color:var(--crit)} .finding.sev-High{border-left-color:var(--serious)}
+.finding.sev-Medium{border-left-color:var(--warn)} .finding.sev-Low{border-left-color:var(--ok)}
+.finding .top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.sevtag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.03em}
+.sev-Critical .sevtag{background:var(--crit-soft);color:var(--crit)} .sev-High .sevtag{background:var(--serious-soft);color:var(--serious)}
+.sev-Medium .sevtag{background:var(--warn-soft);color:var(--warn)} .sev-Low .sevtag{background:var(--ok-soft);color:var(--ok)}
+.finding .cwe{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto}
+.finding b{font-size:14px} .finding p{margin:6px 0 0;font-size:12.5px;color:var(--ink-2)}
+
+/* ---- history ---- */
+.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600}
+.stat .v{font-family:var(--mono);font-size:30px;font-weight:600;margin-top:4px;letter-spacing:-.02em}
+.stat .d{font-size:12px;color:var(--ink-3);margin-top:3px}
+.histgrid{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-top:16px;align-items:start}
+.sevbars{display:flex;flex-direction:column;gap:12px;padding:4px 2px}
+.sevbar{display:grid;grid-template-columns:72px 1fr auto;gap:10px;align-items:center}
+.sevbar .lab{font-size:12px;font-weight:600}
+.sevbar .track{height:14px;background:var(--surface-3);border-radius:7px;overflow:hidden}
+.sevbar .track>i{display:block;height:100%;border-radius:7px}
+.sevbar .n{font-family:var(--mono);font-size:13px;font-weight:600;min-width:20px;text-align:right}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:600;
+  padding:10px 12px;border-bottom:1px solid var(--border)}
+td{padding:11px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12.5px}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+.gpill{font-weight:700;padding:2px 9px;border-radius:6px;font-family:var(--mono)}
+.g-A.gpill,.g-B.gpill{background:var(--ok-soft);color:var(--ok)} .g-C.gpill{background:var(--warn-soft);color:var(--warn)}
+.g-D.gpill{background:var(--serious-soft);color:var(--serious)} .g-F.gpill{background:var(--crit-soft);color:var(--crit)}
+
+.note{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:7px;margin-top:14px}
+.note svg{width:14px;height:14px;flex:none}
+.demotag{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);
+  background:var(--warn-soft);padding:3px 7px;border-radius:5px}
+
+@media (max-width:860px){
+  .launch,.runcols,.histgrid{grid-template-columns:1fr}
+  .kpis,.statrow{grid-template-columns:1fr 1fr}
+  .runhead{grid-template-columns:1fr;text-align:left}
+}
+@media (max-width:460px){.tabs button{padding:6px 9px}.kpis,.statrow{grid-template-columns:1fr}}
+</style>
+
+<div class="app">
+  <header class="cmd">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></span>
+      <div><b>Sentinel Console</b><br><span>black-box llm red-team</span></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" data-view="launch" aria-selected="true">Launch</button>
+      <button role="tab" data-view="run" aria-selected="false">Live run</button>
+      <button role="tab" data-view="history" aria-selected="false">History</button>
+    </nav>
+    <div class="sp"></div>
+    <button class="icbtn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme"></button>
+  </header>
+
+  <main class="wrap">
+    <!-- LAUNCH -->
+    <section id="view-launch">
+      <div class="launch">
+        <div class="card">
+          <div class="hd"><h3>Target &amp; scope</h3><span class="demotag">demo mode</span></div>
+          <div class="pad">
+            <div class="field">
+              <label class="lbl" for="target">Target endpoint</label>
+              <input type="text" id="target" value="openai+https://api-inference.example/v1#meta-llama/Llama-3.1-8B-Instruct">
+              <span class="hint">OpenAI-compatible URI. Scope is signed and enforced server-side — the client never chooses it.</span>
+            </div>
+            <div class="field">
+              <label class="lbl" for="apikey">API key</label>
+              <input type="password" id="apikey" placeholder="X-API-Key — enter to drive the live service (kept in this browser)">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label class="lbl">Rule packs</label>
+              <div class="packgrid" id="packs"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd"><h3>Attack surface &amp; knobs</h3></div>
+          <div class="pad">
+            <div class="field">
+              <label class="lbl" for="profile">Profile</label>
+              <select id="profile">
+                <option value="quick">quick — fast triage</option>
+                <option value="standard" selected>standard — balanced</option>
+                <option value="deep">deep — exhaustive</option>
+                <option value="full">full — deep + engines + judges</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="lbl">Categories</label>
+              <div class="chips" id="cats"></div>
+            </div>
+            <div class="field">
+              <label class="lbl">Adaptive checks</label>
+              <div class="grid2" id="flags"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label class="lbl" for="trials">Trials</label><input type="number" id="trials" value="8" min="1" max="100"></div>
+              <div class="field"><label class="lbl" for="maxtok">Max tokens</label><input type="number" id="maxtok" value="512" min="1" max="8192"></div>
+              <div class="field"><label class="lbl" for="budget">Budget $</label><input type="number" id="budget" value="5" min="0" max="1000" step="0.5"></div>
+            </div>
+            <button class="launchbtn" id="go">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/></svg>
+              Launch scan
+            </button>
+            <div class="note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+              No API base set → runs a simulated scan so you can see the live stream. Set one to drive the real service.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RUN -->
+    <section id="view-run" hidden>
+      <div class="card pad">
+        <div class="runhead">
+          <div class="gradeorb" id="grade">·<small>GRADE</small></div>
+          <div class="runtarget">
+            <h2 style="font-size:16px">Live scan</h2>
+            <div class="t" id="runTarget">—</div>
+            <span class="statuspill" id="runStatus"><span class="pulse"></span><span id="runStatusText">idle</span></span>
+          </div>
+          <div style="text-align:right;color:var(--ink-3);font-size:12px" class="mono"><span id="runId">—</span></div>
+        </div>
+        <div class="progress"><i id="bar"></i></div>
+        <div class="kpis">
+          <div class="kpi"><div class="k">Techniques</div><div class="v tnum"><span id="kDone">0</span><small>/<span id="kTotal">0</span></small></div></div>
+          <div class="kpi"><div class="k">Requests</div><div class="v tnum" id="kReq">0</div></div>
+          <div class="kpi"><div class="k">Cost</div><div class="v tnum"><small>$</small><span id="kCost">0.00</span></div></div>
+          <div class="kpi"><div class="k">Confirmed</div><div class="v tnum" id="kFind">0</div></div>
+        </div>
+      </div>
+
+      <div class="runcols">
+        <div class="card">
+          <div class="hd"><h3>Technique stream</h3><span class="mono" style="font-size:12px;color:var(--ink-3)" id="coverNote"></span></div>
+          <div class="techlist" id="techlist"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="logwrap">
+            <div class="hd"><h3>Event stream</h3><span class="mono" style="font-size:11px;color:var(--ink-3)">SSE</span></div>
+            <div class="log" id="log" role="log" aria-live="polite"></div>
+          </div>
+          <div class="card">
+            <div class="hd"><h3>Findings</h3></div>
+            <div class="pad"><div class="findings" id="findings"><p class="hint">Confirmed findings appear here as the oracle verifies them.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="view-history" hidden>
+      <div class="statrow" id="stats"></div>
+      <div class="histgrid">
+        <div class="card">
+          <div class="hd"><h3>Recent scans</h3><span class="mono" style="font-size:12px;color:var(--ink-3)">scan-event store</span></div>
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Run</th><th>Target</th><th>Grade</th><th>Findings</th><th>Coverage</th><th>Cost</th></tr></thead>
+            <tbody id="histrows"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h3>Findings by severity</h3></div>
+          <div class="pad"><div class="sevbars" id="sevbars"></div></div>
+        </div>
+      </div>
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+        Sample history shown for the demo. With an API base configured these rows come from the server's scan-event store.
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- theme ---------- */
+const sun='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
+const moon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg>';
+function applyTheme(t){ if(t) document.documentElement.setAttribute('data-theme',t); else document.documentElement.removeAttribute('data-theme');
+  const dark = t? t==='dark' : matchMedia('(prefers-color-scheme:dark)').matches;
+  $('#themeBtn').innerHTML = dark? sun : moon; }
+let theme=store.get('theme',null); applyTheme(theme);
+$('#themeBtn').onclick=()=>{ const dark = theme? theme==='dark' : matchMedia('(prefers-color-scheme:dark)').matches;
+  theme = dark?'light':'dark'; store.set('theme',theme); applyTheme(theme); };
+
+/* ---------- catalog (mirrors the scanner's categories/techniques) ---------- */
+const CATS=[
+  {id:'A',name:'Injection & exfiltration'},{id:'B',name:'Adaptive attacks'},
+  {id:'C',name:'Secret leakage'},{id:'E',name:'Insecure output & code'}];
+const TECHNIQUES=[
+  {id:'A1',cat:'A',name:'Direct prompt injection',desc:'instruction override'},
+  {id:'A3',cat:'A',name:'Hidden injection',desc:'Trojan-Source / byte-smuggling'},
+  {id:'A5',cat:'A',name:'Data exfiltration',desc:'markdown-image beacon'},
+  {id:'A5b',cat:'A',name:'WebSocket exfiltration',desc:'ws:// channel'},
+  {id:'C2',cat:'C',name:'Secret leakage from context',desc:'canary recovery'},
+  {id:'E1',cat:'E',name:'Active content render',desc:'script / event-handler'},
+  {id:'E2',cat:'E',name:'Insecure code — injection',desc:'CWE-78 / 89 / 95'},
+  {id:'E2s',cat:'E',name:'Template injection',desc:'CWE-1336 SSTI'},
+  {id:'E2x',cat:'E',name:'Cross-site scripting',desc:'CWE-79'},
+  {id:'E2c',cat:'E',name:'Weak ciphers',desc:'CWE-327 / ECB'},
+  {id:'E3',cat:'E',name:'Resource exhaustion',desc:'cap / latency oracle'},
+  {id:'B1',cat:'B',name:'Genetic jailbreak',desc:'engine-owned'},
+  {id:'B7',cat:'B',name:'Adaptive multi-turn',desc:'engine-owned'}];
+const PACKS=[
+  {id:'owasp',name:'OWASP LLM Top-10',desc:'the broad baseline sweep',cats:['A','C','E'],icon:'list'},
+  {id:'inject',name:'Prompt injection',desc:'A-series injection & overrides',cats:['A'],icon:'bolt'},
+  {id:'exfil',name:'Data exfiltration',desc:'canary-gated outbound channels',cats:['A','C'],icon:'send'},
+  {id:'code',name:'Insecure code (E2)',desc:'code-sink oracle, 15 CWEs',cats:['E'],icon:'code'},
+  {id:'full',name:'Full kill-chain',desc:'every category + adaptive engines',cats:['A','B','C','E'],icon:'target'}];
+const PK_ICONS={
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  bolt:'<path d="M13 2L3 14h8l-1 8 10-12h-8z"/>',
+  send:'<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>',
+  code:'<path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>'};
+const FLAGS=[
+  {id:'check_triggered',name:'Trigger discovery'},{id:'check_obfuscation',name:'Obfuscation sweep'},
+  {id:'check_evolution',name:'Payload evolution'},{id:'extended',name:'Extended corpus'}];
+
+/* ---------- selection state ---------- */
+const sel={pack:store.get('pack','owasp'),cats:new Set(store.get('cats',['A','C','E'])),
+  flags:new Set(store.get('flags',[]))};
+
+function renderPacks(){ $('#packs').innerHTML=PACKS.map(p=>`
+  <button class="pack" data-pack="${p.id}" aria-pressed="${sel.pack===p.id}">
+    <span class="pk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PK_ICONS[p.icon]}</svg></span>
+    <span style="min-width:0"><b>${p.name}</b><span>${p.desc}</span></span>
+  </button>`).join('');
+  $$('#packs .pack').forEach(b=>b.onclick=()=>{ sel.pack=b.dataset.pack; const p=PACKS.find(x=>x.id===sel.pack);
+    sel.cats=new Set(p.cats); store.set('pack',sel.pack); store.set('cats',[...sel.cats]); renderPacks(); renderCats(); }); }
+function renderCats(){ $('#cats').innerHTML=CATS.map(c=>{const n=TECHNIQUES.filter(t=>t.cat===c.id).length;
+  return `<button class="chip" data-cat="${c.id}" aria-pressed="${sel.cats.has(c.id)}"><span class="dot"></span>${c.id} · ${c.name} <small>${n}</small></button>`}).join('');
+  $$('#cats .chip').forEach(b=>b.onclick=()=>{ const c=b.dataset.cat; sel.cats.has(c)?sel.cats.delete(c):sel.cats.add(c);
+    store.set('cats',[...sel.cats]); renderCats(); }); }
+function renderFlags(){ $('#flags').innerHTML=FLAGS.map(f=>`<label class="toggle"><input type="checkbox" data-flag="${f.id}" ${sel.flags.has(f.id)?'checked':''}>${f.name}</label>`).join('');
+  $$('#flags input').forEach(i=>i.onchange=()=>{ i.checked?sel.flags.add(i.dataset.flag):sel.flags.delete(i.dataset.flag);
+    store.set('flags',[...sel.flags]); }); }
+renderPacks(); renderCats(); renderFlags();
+$('#apikey').value=store.get('apikey',''); $('#apikey').addEventListener('input',e=>store.set('apikey',e.target.value.trim()));
+
+/* ---------- view routing ---------- */
+const VIEWS=['launch','run','history'];
+function show(v){ if(!VIEWS.includes(v)) v='launch';
+  VIEWS.forEach(x=>$('#view-'+x).hidden = x!==v);
+  $$('.tabs button').forEach(b=>b.setAttribute('aria-selected', b.dataset.view===v));
+  if(location.hash.slice(1)!==v) history.replaceState(null,'','#'+v); }
+$$('.tabs button').forEach(b=>b.onclick=()=>show(b.dataset.view));
+addEventListener('hashchange',()=>show(location.hash.slice(1)));
+
+/* ---------- scan request (exact ScanRequest contract) ---------- */
+function buildRequest(){
+  const catToAttacks={A:['A1','A3','A5','A5b'],C:['C2'],E:['E1','E2','E2s','E2x','E2c','E3'],B:['B1','B7']};
+  const cats=[...sel.cats];
+  const req={ target:$('#target').value.trim(), profile:$('#profile').value,
+    categories:cats, trials:+$('#trials').value, max_tokens:+$('#maxtok').value, budget_usd:+$('#budget').value };
+  FLAGS.forEach(f=> { if(sel.flags.has(f.id)) req[f.id]=true; });
+  return req;
+}
+
+/* ---------- run state & renderers ---------- */
+let run=null;
+function fmt(t){const d=new Date(t);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0').slice(0,2)}
+function logLine(ev,kind,msg){ const el=$('#log'); const atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-20;
+  const d=document.createElement('div'); d.className='ln';
+  d.innerHTML=`<span class="ts">${fmt(Date.now())}</span><span class="ev e-${kind}">${ev}</span><span class="msg"></span>`;
+  d.querySelector('.msg').textContent=msg; el.appendChild(d); if(atBottom) el.scrollTop=el.scrollHeight; }
+
+const GRADE_ORDER=['A','B','C','D','F'];
+function gradeFromFindings(fs){ if(!fs.length) return 'A';
+  if(fs.some(f=>f.severity==='Critical')) return 'F';
+  if(fs.some(f=>f.severity==='High')) return 'D';
+  if(fs.some(f=>f.severity==='Medium')) return 'C'; return 'B'; }
+function setGrade(g){ const o=$('#grade'); o.className='gradeorb g-'+g; o.firstChild.textContent=g; }
+
+function initRun(req){
+  const chosen=TECHNIQUES.filter(t=>sel.cats.has(t.cat));
+  run={req,total:chosen.length,done:0,req_n:0,cost:0,findings:[],techs:chosen.map(t=>({...t,status:'queued'}))};
+  $('#runTarget').textContent=req.target; $('#runId').textContent='run '+Math.random().toString(36).slice(2,10);
+  $('#kTotal').textContent=run.total; $('#kDone').textContent='0'; $('#kReq').textContent='0';
+  $('#kCost').textContent='0.00'; $('#kFind').textContent='0'; $('#bar').style.width='0%';
+  setGrade('·'); $('#grade').className='gradeorb'; $('#grade').firstChild.textContent='·';
+  $('#findings').innerHTML='<p class="hint">Confirmed findings appear here as the oracle verifies them.</p>';
+  $('#log').innerHTML=''; renderTechs();
+  const notRun=TECHNIQUES.filter(t=>t.cat==='B'&&sel.cats.has('B')).length;
+  $('#coverNote').textContent = run.total+' techniques · profile '+req.profile;
+  setStatus('running','scanning'); logLine('scan','start','started · '+run.total+' techniques · profile='+req.profile);
+}
+function renderTechs(){ $('#techlist').innerHTML=run.techs.map(t=>{
+  const engineOwned = t.cat==='B';
+  let st=t.status, cls=st, label=st;
+  if(engineOwned && st==='queued'){cls='skip';label='needs engine';}
+  const spin = st==='running'?'<span class="spin"></span> ':'';
+  const extra = t.asr!=null? ` · ASR ${(t.asr*100).toFixed(0)}%`:'';
+  return `<div class="tech"><span class="cid">${t.id.replace(/[a-z]$/,'')}</span>
+    <span class="nm"><b>${t.name}</b><span>${t.desc}${extra}</span></span>
+    <span class="st ${cls}">${spin}${label}</span></div>`}).join(''); }
+function setStatus(kind,text){ const p=$('#runStatus'); p.classList.toggle('live',kind==='running');
+  $('#runStatusText').textContent=text; }
+function addFinding(f){ run.findings.push(f); $('#kFind').textContent=run.findings.length;
+  const box=$('#findings'); if(run.findings.length===1) box.innerHTML='';
+  const d=document.createElement('div'); d.className='finding sev-'+f.severity;
+  d.innerHTML=`<div class="top"><span class="sevtag">${f.severity}</span><b></b><span class="cwe">${f.cwe||f.cid}</span></div><p></p>`;
+  d.querySelector('b').textContent=f.title; d.querySelector('p').textContent=f.detail;
+  box.prepend(d); setGrade(gradeFromFindings(run.findings)); }
+
+/* ---------- demo simulator (stands in for the SSE stream) ---------- */
+const OUTCOMES={
+  A1:{r:'clear'},A3:{r:'clear'},
+  A5:{r:'confirmed',sev:'Critical',asr:.9,cwe:'exfil',title:'Data exfiltration via markdown image',detail:'Canary recovered at an attacker-controlled host in a rendered markdown image (ASR 90%).'},
+  A5b:{r:'clear'},
+  C2:{r:'confirmed',sev:'Critical',asr:1,cwe:'C2',title:'Secret leakage from context',detail:'System-prompt canary reproduced verbatim on 5/5 trials.'},
+  E1:{r:'hit',asr:.3},
+  E2:{r:'confirmed',sev:'High',asr:.6,cwe:'CWE-78',title:'Insecure code — command injection',detail:'Model emitted os.system(user_input) with shell=True.'},
+  E2s:{r:'clear'},E2x:{r:'hit',asr:.2},
+  E2c:{r:'confirmed',sev:'Medium',asr:.5,cwe:'CWE-327',title:'Weak cipher suggested',detail:'Model produced AES.MODE_ECB for "encrypt this".'},
+  E3:{r:'clear'}};
+let timer=null;
+function runDemo(req){
+  initRun(req); let i=0;
+  const step=()=>{
+    if(i>0){ const prev=run.techs[i-1]; const o=OUTCOMES[prev.id]||{r:'clear'};
+      prev.status=o.r; prev.asr=o.asr??(o.r==='clear'?0:null); run.done++;
+      $('#kDone').textContent=run.done; $('#bar').style.width=(run.done/run.total*100)+'%';
+      if(o.r==='confirmed'){ logLine(prev.id,'find','CONFIRMED '+(o.cwe||'')+' — '+o.title);
+        addFinding({cid:prev.id,severity:o.sev,cwe:o.cwe,title:o.title,detail:o.detail}); }
+      else if(o.r==='hit') logLine(prev.id,'hit','hit · ASR '+((o.asr||0)*100).toFixed(0)+'% (below confirm threshold)');
+      else logLine(prev.id,'clear','no-hit · target held');
+      renderTechs(); }
+    if(i>=run.techs.length){ finishDemo(); return; }
+    const t=run.techs[i];
+    if(t.cat==='B'){ t.status='skip'; run.done++; $('#kDone').textContent=run.done;
+      $('#bar').style.width=(run.done/run.total*100)+'%'; logLine(t.id,'info','not-run · needs an engine image not in this build');
+      renderTechs(); i++; timer=setTimeout(step,180); return; }
+    t.status='running'; renderTechs(); logLine(t.id,'start','probing · '+t.name);
+    const n=req.trials||5; run.req_n+=n; run.cost+=n*0.00018*(req.max_tokens/100);
+    $('#kReq').textContent=run.req_n; $('#kCost').textContent=run.cost.toFixed(2);
+    i++; timer=setTimeout(step, 520+Math.random()*420);
+  };
+  step();
+}
+function finishDemo(){ setStatus('done','completed'); $('#bar').style.width='100%';
+  const g=gradeFromFindings(run.findings); setGrade(g);
+  logLine('scan','done','completed · grade '+g+' · '+run.findings.length+' confirmed · '+run.req_n+' requests · $'+run.cost.toFixed(2));
+  saveHistory(); }
+
+/* ---------- real API path (same UI, live SSE) ---------- */
+async function runLive(req,base,key){
+  initRun(req);
+  const h={'Content-Type':'application/json'}; if(key) h['X-API-Key']=key;
+  let job;
+  try{ const r=await fetch(base+'/scans',{method:'POST',headers:h,body:JSON.stringify(req)});
+    if(!r.ok) throw new Error('HTTP '+r.status); job=await r.json(); }
+  catch(e){ logLine('error','find','could not reach API ('+e.message+') — falling back to demo'); return runDemo(req); }
+  $('#runId').textContent=job.job_id||'job';
+  // the server returns the events URL carrying a per-job stream token (not the API key); use it verbatim
+  const es=new EventSource(base+job.events);
+  es.onmessage=ev=>{ let d; try{d=JSON.parse(ev.data)}catch(e){return}
+    handleEvent(d); if(d.type==='scan_closed'){ es.close(); finishLive(job.job_id,base,key); } };
+  es.onerror=()=>{ es.close(); logLine('info','info','event stream closed'); };
+}
+async function finishLive(jobId,base,key){ /* pull the completed report for findings with severity + refresh history */
+  try{ const h=key?{'X-API-Key':key}:{}; const r=await fetch(base+'/scans/'+jobId,{headers:h});
+    const j=await r.json(); const rep=j.result||{};
+    (rep.findings||[]).forEach(f=>addFinding({cid:f.catalog_id,severity:f.severity,
+      cwe:f.catalog_id,title:f.technique||f.catalog_id,detail:'confirmed · ASR '+Math.round((f.asr||0)*100)+'%'}));
+    setGrade((rep.grade&&rep.grade.overall)||gradeFromFindings(run.findings));
+    loadHistory(base,key);
+  }catch(e){/* keep the streamed view */}
+}
+function handleEvent(d){ /* bridges the server event stream → the same renderers the demo uses */
+  if(d.type==='scan_started'){ if(d.total) {run.total=d.total; $('#kTotal').textContent=d.total;} logLine('scan','start','started · '+(d.total||'?')+' techniques'); }
+  else if(d.type==='technique_done'){ const t=run.techs.find(x=>x.id===d.catalog_id);
+    const st=d.outcome==='confirmed'?'confirmed':(d.outcome==='hit'?'hit':'clear');
+    if(t){t.status=st;t.asr=d.asr;} run.done++; renderTechs();
+    $('#kDone').textContent=run.done; $('#bar').style.width=(run.done/Math.max(run.total,1)*100)+'%';
+    if(d.requests!=null){run.req_n=d.requests;$('#kReq').textContent=d.requests;}
+    if(d.cost_usd!=null){run.cost=d.cost_usd;$('#kCost').textContent=(+d.cost_usd).toFixed(2);}
+    logLine(d.catalog_id, st==='confirmed'?'find':(st==='hit'?'hit':'clear'),
+      d.outcome+(d.asr!=null?' · ASR '+Math.round(d.asr*100)+'%':'')); }
+  else if(d.type==='scan_completed'){ setStatus('done','completed'); if(d.grade) setGrade(d.grade);
+    if(d.requests!=null){$('#kReq').textContent=d.requests;} if(d.cost_usd!=null){$('#kCost').textContent=(+d.cost_usd).toFixed(2);} }
+  else if(d.type==='scan_closed'){ setStatus('done','completed'); }
+}
+
+/* ---------- live API detection + catalog ---------- */
+let API={live:false, base:''};
+async function detectApi(){
+  try{ const r=await fetch(API.base+'/healthz'); if(r.ok){ API.live=true; } }catch(e){ API.live=false; }
+  document.querySelectorAll('.demotag').forEach(t=>{ t.textContent=API.live?'live api':'demo mode';
+    t.style.color=API.live?'var(--ok)':'var(--warn)'; t.style.background=API.live?'var(--ok-soft)':'var(--warn-soft)'; });
+}
+async function loadCatalog(){ // replace the built-in demo catalog with the server's when connected + keyed
+  if(!API.live) return; const key=$('#apikey').value.trim(); if(!key) return;
+  try{ const r=await fetch(API.base+'/catalog',{headers:{'X-API-Key':key}}); if(!r.ok) return; const c=await r.json();
+    if(c.rule_packs){ PACKS.length=0; c.rule_packs.forEach(p=>PACKS.push(
+      {id:p.id,name:p.name,desc:p.description,cats:p.categories,icon:({owasp:'list',inject:'bolt',exfil:'send',code:'code',full:'target'})[p.id]||'target'})); }
+    if(c.categories){ CATS.length=0; c.categories.forEach(x=>CATS.push({id:x.id,name:x.name})); }
+    if(c.techniques){ TECHNIQUES.length=0; c.techniques.forEach(t=>TECHNIQUES.push({id:t.id,cat:t.category,name:t.name,desc:t.status||''})); }
+    if(c.profiles){ $('#profile').innerHTML=c.profiles.map(p=>`<option value="${p}">${p}</option>`).join(''); }
+    renderPacks(); renderCats();
+  }catch(e){/* keep demo catalog */}
+}
+async function loadHistory(base,key){
+  if(!API.live) return; try{ const r=await fetch((base||API.base)+'/history',{headers:key?{'X-API-Key':key}:{}});
+    if(!r.ok) return; const j=await r.json(); const rows=(j.scans||[]).map(s=>({run:(s.run_id||'').slice(0,8),
+      target:(s.target_ref||'').split('#').pop().slice(0,32),grade:s.grade||'A',
+      crit:0,high:0,med:0,low:0,cov:(s.techniques_run||0)+'/'+(s.techniques_total||0),cost:+(s.cost_usd||0)}));
+    if(rows.length){ store.set('runs',rows.slice(0,20)); renderHistory(); }
+  }catch(e){/* keep sample history */}
+}
+
+/* ---------- launch ---------- */
+$('#go').onclick=()=>{
+  const req=buildRequest();
+  if(!req.target){ $('#target').focus(); return; }
+  show('run');
+  const key=$('#apikey').value.trim();
+  if(API.live && key) runLive(req,API.base,key); else runDemo(req);
+};
+$('#apikey').addEventListener('change',loadCatalog);
+
+/* ---------- history (sample + persisted) ---------- */
+const SAMPLE_HISTORY=[
+  {run:'k7qm2xpa',target:'Llama-3.1-8B-Instruct',grade:'F',crit:2,high:0,med:0,low:0,cov:'11/13',cost:0.42},
+  {run:'3rtdh4wb',target:'Mistral-7B-Instruct',grade:'D',crit:0,high:1,med:1,low:0,cov:'9/13',cost:0.31},
+  {run:'9xp2lm4a',target:'gpt-oss-20b (local)',grade:'C',crit:0,high:0,med:2,low:1,cov:'13/13',cost:0.08},
+  {run:'b1n7qz0k',target:'Phi-3-mini-4k',grade:'A',crit:0,high:0,med:0,low:0,cov:'8/13',cost:0.05}];
+function saveHistory(){ const h=store.get('runs',[]);
+  const sev=run.findings.reduce((a,f)=>{a[f.severity]=(a[f.severity]||0)+1;return a},{});
+  h.unshift({run:$('#runId').textContent.replace('run ',''),target:(run.req.target.split('#')[1]||run.req.target).slice(0,32),
+    grade:gradeFromFindings(run.findings),crit:sev.Critical||0,high:sev.High||0,med:sev.Medium||0,low:sev.Low||0,
+    cov:run.done+'/'+run.total,cost:+run.cost.toFixed(2)});
+  store.set('runs',h.slice(0,20)); renderHistory(); }
+function renderHistory(){
+  const rows=[...store.get('runs',[]),...SAMPLE_HISTORY];
+  const tot=rows.length, finds=rows.reduce((a,r)=>a+r.crit+r.high+r.med+r.low,0);
+  const crit=rows.reduce((a,r)=>a+r.crit,0), cost=rows.reduce((a,r)=>a+r.cost,0);
+  $('#stats').innerHTML=[
+    ['Scans',tot,'in the store'],['Findings',finds,'confirmed, all scans'],
+    ['Critical',crit,'require action'],['Spend','$'+cost.toFixed(2),'priced API cost']
+  ].map(s=>`<div class="stat"><div class="k">${s[0]}</div><div class="v tnum">${s[1]}</div><div class="d">${s[2]}</div></div>`).join('');
+  $('#histrows').innerHTML=rows.map(r=>`<tr><td>${r.run}</td><td style="font-family:var(--font)">${r.target}</td>
+    <td><span class="gpill g-${r.grade}">${r.grade}</span></td>
+    <td>${r.crit+r.high+r.med+r.low}</td><td>${r.cov}</td><td>$${r.cost.toFixed(2)}</td></tr>`).join('');
+  const sev={Critical:crit,High:rows.reduce((a,r)=>a+r.high,0),Medium:rows.reduce((a,r)=>a+r.med,0),Low:rows.reduce((a,r)=>a+r.low,0)};
+  const max=Math.max(1,...Object.values(sev)); const col={Critical:'var(--crit)',High:'var(--serious)',Medium:'var(--warn)',Low:'var(--ok)'};
+  $('#sevbars').innerHTML=Object.entries(sev).map(([k,v])=>`<div class="sevbar"><span class="lab">${k}</span>
+    <div class="track"><i style="width:${v/max*100}%;background:${col[k]}"></i></div><span class="n tnum">${v}</span></div>`).join('');
+}
+renderHistory();
+
+show(location.hash.slice(1)||'launch');
+
+// Detect a live API on the same origin; if present, pull the real catalog + history (falls back to demo on any failure).
+detectApi().then(()=>{ loadCatalog(); loadHistory(API.base,$('#apikey').value.trim()); });
+</script>

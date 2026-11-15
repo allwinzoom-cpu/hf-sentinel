@@ -38,7 +38,7 @@ from hfsentinel.scope import ScopeError
 
 try:
     from fastapi import Depends, FastAPI, Header, HTTPException, Query
-    from fastapi.responses import StreamingResponse
+    from fastapi.responses import HTMLResponse, StreamingResponse
     FASTAPI_AVAILABLE = True
 except Exception:                               # noqa: BLE001 - optional extra; core scanner must import without fastapi
     FASTAPI_AVAILABLE = False
@@ -243,6 +243,17 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
                     events.put_nowait({"type": "_end"})           # sentinel: tells the SSE generator the run is over
                 except queue.Full:
                     pass
+
+    @app.get("/", response_class=HTMLResponse)
+    async def console() -> str:
+        """Serve the operator console (static, same-origin). Its own API calls carry the key; serving the page needs none.
+        Returns a minimal placeholder if the asset is missing, so the API still runs without the bundled UI."""
+        from pathlib import Path
+        page = Path(__file__).parent / "static" / "console.html"
+        try:
+            return page.read_text(encoding="utf-8")
+        except OSError:
+            return "<!doctype html><title>HF-Sentinel</title><p>Console asset not found. API is running at /healthz."
 
     @app.get("/healthz")
     async def healthz() -> dict:

@@ -606,6 +606,54 @@
    "id": "n31",
    "expect": [],
    "code": "```javascript\nel.innerHTML = DOMPurify.sanitize(dirty)\n```"
+  },
+  {
+   "id": "p34",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import torch\ndef load(path):\n    return torch.load(path)\n"
+  },
+  {
+   "id": "p35",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import joblib\ndef load(path):\n    return joblib.load(path)\n"
+  },
+  {
+   "id": "p36",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import numpy as np\ndef load(path):\n    return np.load(path, allow_pickle=True)\n"
+  },
+  {
+   "id": "p37",
+   "expect": [
+    "CWE-502"
+   ],
+   "code": "import pandas as pd\ndef load(path):\n    return pd.read_pickle(path)\n"
+  },
+  {
+   "id": "n32",
+   "expect": [],
+   "code": "import torch\ndef load(path):\n    return torch.load(path, weights_only=True)\n"
+  },
+  {
+   "id": "n33",
+   "expect": [],
+   "code": "import numpy as np\ndef load(path):\n    return np.load(path)\n"
+  },
+  {
+   "id": "n34",
+   "expect": [],
+   "code": "import json\ndef load(path):\n    with open(path) as f:\n        return json.load(f)\n"
+  },
+  {
+   "id": "n35",
+   "expect": [],
+   "code": "from safetensors.torch import load_file\ndef load(path):\n    return load_file(path)\n"
   }
  ]
 }

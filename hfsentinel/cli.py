@@ -929,6 +929,25 @@ def serve(host: Annotated[str, typer.Option(help="Bind address.")] = "127.0.0.1"
 
 
 @app.command()
+def prune(db: Annotated[Path | None, typer.Option("--db", help="Scan store to prune (defaults to $HFSENTINEL_DB).")]
+          = None,
+          keep: Annotated[int, typer.Option("--keep", help="Keep this many most-recent scans; delete older ones.")]
+          = 1000) -> None:
+    """Retention: keep only the most-recent `keep` scans, deleting older scans and their coverage + findings. Run it on a
+    schedule (e.g. cron) to bound a long-running deployment's event store."""
+    from hfsentinel import store
+    db_path = db or os.environ.get("HFSENTINEL_DB")
+    if not db_path:
+        raise _fail("no scan store: pass --db or set $HFSENTINEL_DB", EXIT_USAGE)
+    if not Path(db_path).expanduser().is_file():
+        raise _fail(f"scan store not found: {_clean(str(db_path), 160)}", EXIT_INPUT)
+    if keep < 0:
+        raise _fail("--keep must be >= 0", EXIT_USAGE)
+    removed = store.prune(db_path, keep=keep)
+    typer.echo(f"pruned    {removed} scan(s) removed · kept the {keep} most recent")
+
+
+@app.command()
 def history(db: Annotated[Path | None, typer.Option("--db", help="Scan store written by `scan --db` "
                                                     "(defaults to $HFSENTINEL_DB).")] = None,
             run: Annotated[str | None, typer.Option("--run", help="Show one scan's coverage and findings by run id.")]

@@ -77,6 +77,28 @@ def test_history_requires_a_store(tmp_path, monkeypatch):
     assert res2.exit_code == cli.EXIT_INPUT and "not found" in res2.output
 
 
+def test_cli_prune_command(tmp_path):
+    import copy
+    db = tmp_path / "scans.db"
+    for i in range(4):
+        r = copy.deepcopy(REPORT)
+        r["run"]["run_id"] = f"run-{i}"
+        r["run"]["started_at"] = f"2026-01-0{i + 1}T00:00:00+00:00"
+        store.record_scan(db, r)
+    res = CliRunner().invoke(cli.app, ["prune", "--db", str(db), "--keep", "1"])
+    assert res.exit_code == 0, res.output
+    assert "3 scan(s) removed" in res.output
+    assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 1
+    # guards: no store configured, missing file
+    import os as _os
+    monkey = {k: _os.environ.pop(k) for k in ["HFSENTINEL_DB"] if k in _os.environ}
+    try:
+        assert CliRunner().invoke(cli.app, ["prune"]).exit_code == cli.EXIT_USAGE
+    finally:
+        _os.environ.update(monkey)
+    assert CliRunner().invoke(cli.app, ["prune", "--db", str(tmp_path / "nope.db")]).exit_code == cli.EXIT_INPUT
+
+
 def test_prune_keeps_the_most_recent_and_cascades(tmp_path):
     import copy
     db = tmp_path / "scans.db"

@@ -217,7 +217,9 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
         if not keys:
             raise HTTPException(status_code=503, detail="API keys are not configured on the server")
         presented = _present_key(authorization, x_api_key)
-        if not presented or presented not in keys:
+        # Constant-time comparison against every configured key (consistent with the stream-token check), so a response's
+        # timing never leaks how much of a guessed key was correct. `any` only short-circuits once a key already matched.
+        if not presented or not any(secrets.compare_digest(presented, k) for k in keys):
             raise HTTPException(status_code=401, detail="missing or invalid API key")
         if not limiter.allow(presented):
             raise HTTPException(status_code=429, detail="rate limit exceeded")

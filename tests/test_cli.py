@@ -48,6 +48,16 @@ def assert_no_upstream(text: str):
     assert [t for t in UPSTREAM if t in text.lower()] == []
 
 
+def test_full_flag_expands_to_deep_profile_coverage():
+    # --full is the one-switch maximum-coverage mode: it selects the deep profile (trials 20, high budget) and announces
+    # that it adds engines + judges. --print-config returns before any target work, so this needs no network.
+    res = run("scan", "openai+http://127.0.0.1:1/#m", "--full", "--print-config")
+    assert res.exit_code == 0, res.output
+    assert "--full: deep profile + engines + judges" in res.output
+    assert "trials: 20" in res.output  # deep profile applied
+    assert_no_upstream(res.output)
+
+
 def test_resolve_prints_plan():
     res = run("resolve", TARGET)
     assert res.exit_code == cli.EXIT_OK

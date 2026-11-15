@@ -15,25 +15,47 @@ only :func:`create_app` needs the optional ``api`` extra.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import json
 import os
+import queue
+import secrets
 import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, Field  # pydantic is a core dependency
 
 from hfsentinel import sdk
+from hfsentinel import store as scanstore
+from hfsentinel.attacks.catalog import load_catalog
+from hfsentinel.controls import PROFILES
 from hfsentinel.scope import ScopeError
 
 try:
-    from fastapi import Depends, FastAPI, Header, HTTPException
+    from fastapi import Depends, FastAPI, Header, HTTPException, Query
+    from fastapi.responses import StreamingResponse
     FASTAPI_AVAILABLE = True
 except Exception:                               # noqa: BLE001 - optional extra; core scanner must import without fastapi
     FASTAPI_AVAILABLE = False
+
+# Human-readable category names (A–E in scope; D agentic is out of scope, shown for completeness) and curated rule packs:
+# named bundles of categories the UI offers as one click. Kept here so /catalog is the single source the UI renders from.
+CATEGORY_NAMES = {"A": "Injection & exfiltration", "B": "Adaptive attacks", "C": "Secret leakage",
+                  "D": "Agentic (out of scope)", "E": "Insecure output & code", "H": "Hallucination"}
+RULE_PACKS = (
+    {"id": "owasp", "name": "OWASP LLM Top-10", "description": "broad baseline sweep", "categories": ["A", "C", "E"]},
+    {"id": "inject", "name": "Prompt injection", "description": "A-series injection & overrides", "categories": ["A"]},
+    {"id": "exfil", "name": "Data exfiltration", "description": "canary-gated outbound channels",
+     "categories": ["A", "C"]},
+    {"id": "code", "name": "Insecure code (E2)", "description": "code-sink oracle", "categories": ["E"]},
+    {"id": "full", "name": "Full kill-chain", "description": "every category + adaptive engines",
+     "categories": ["A", "B", "C", "E"]},
+)
 
 DEFAULT_RATE_PER_MIN = 30
 _PROFILE_RE = r"^(quick|standard|deep|agentic|hallucination|diff)$"
@@ -90,6 +112,8 @@ class Job:
     error: str | None = None
     error_kind: str | None = None  # scope | scan | internal
     finished: str | None = None
+    stream_token: str = ""                               # capability to read this job's event stream (not the API key)
+    events: Any = field(default=None, repr=False)        # queue.Queue of progress events; drained by the SSE endpoint
 
     def public(self) -> dict:
         """JSON-safe view. On failure, a redacted reason + kind; never an internal traceback."""
@@ -114,7 +138,9 @@ class JobStore:
         self._max = max_jobs
 
     def create(self, target: str, request: dict) -> Job:
-        job = Job(id=uuid.uuid4().hex, status="queued", created=_now(), target=target, request=request)
+        job = Job(id=uuid.uuid4().hex, status="queued", created=_now(), target=target, request=request,
+                  stream_token=secrets.token_urlsafe(24))
+        job.events = queue.Queue(maxsize=10000)
         with self._lock:
             self._jobs[job.id] = job
             self._order.append(job.id)
@@ -198,9 +224,12 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
         return presented
 
     def _run(job_id: str, target: str, kwargs: dict) -> None:
+        job = store.get(job_id)
+        events = job.events if job else None
         store.update(job_id, status="running")
         try:
-            result = sdk.scan(target, scope_file=scope_file, signers_file=signers_file, db_path=db_path, **kwargs)
+            result = sdk.scan(target, scope_file=scope_file, signers_file=signers_file, db_path=db_path,
+                              progress=(events.put if events else None), **kwargs)
             store.update(job_id, status="completed", result=result.to_dict(), finished=_now())
         except ScopeError as e:
             store.update(job_id, status="failed", error=str(e), error_kind="scope", finished=_now())
@@ -208,6 +237,12 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
             store.update(job_id, status="failed", error=str(e), error_kind="scan", finished=_now())
         except Exception as e:  # noqa: BLE001 - a scan crash must fail the job, never take down the server
             store.update(job_id, status="failed", error=f"{type(e).__name__}", error_kind="internal", finished=_now())
+        finally:
+            if events is not None:
+                try:
+                    events.put_nowait({"type": "_end"})           # sentinel: tells the SSE generator the run is over
+                except queue.Full:
+                    pass
 
     @app.get("/healthz")
     async def healthz() -> dict:
@@ -217,7 +252,10 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     async def submit_scan(req: ScanRequest, _key: str = Depends(require_key)) -> dict:
         job = store.create(req.target, req.model_dump())
         pool.submit(_run, job.id, req.target, req.scan_kwargs())
-        return {"job_id": job.id, "status": job.status, "poll": f"/scans/{job.id}"}
+        # The events URL carries a per-job stream token, not the API key: EventSource cannot send headers, and this keeps
+        # the key out of URLs and access logs. The token is a capability scoped to this one job's stream.
+        return {"job_id": job.id, "status": job.status, "poll": f"/scans/{job.id}",
+                "stream_token": job.stream_token, "events": f"/scans/{job.id}/events?token={job.stream_token}"}
 
     @app.get("/scans/{job_id}")
     async def get_scan(job_id: str, _key: str = Depends(require_key)) -> dict:
@@ -225,6 +263,65 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
         if job is None:
             raise HTTPException(status_code=404, detail="unknown job id")
         return job.public()
+
+    @app.get("/scans/{job_id}/events")
+    async def scan_events(job_id: str, token: str = Query(default="")):
+        """Server-Sent Events for a running scan. Authenticated by the per-job stream token (constant-time compared), so
+        the API key never appears in a URL. Streams the SDK's progress events verbatim, then a final ``scan_closed``."""
+        job = store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job id")
+        if not token or not secrets.compare_digest(token, job.stream_token):
+            raise HTTPException(status_code=401, detail="invalid or missing stream token")
+
+        def sse(obj: dict) -> str:
+            return f"data: {json.dumps(obj)}\n\n"
+
+        async def generate():
+            yield sse({"type": "stream_open", "job_id": job.id, "status": job.status})
+            while True:
+                try:
+                    ev = await asyncio.to_thread(job.events.get, True, 15.0)   # block a worker thread up to 15s per wait
+                except queue.Empty:
+                    yield ": keep-alive\n\n"                                   # comment frame keeps the connection warm
+                    if job.status in ("completed", "failed") and job.events.empty():
+                        break
+                    continue
+                if ev.get("type") == "_end":
+                    final = store.get(job_id)
+                    yield sse({"type": "scan_closed", "status": final.status if final else "unknown"})
+                    break
+                yield sse(ev)
+
+        return StreamingResponse(generate(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/catalog")
+    async def catalog(_key: str = Depends(require_key)) -> dict:
+        """What the UI renders selectable options from: profiles, categories (+names), every technique, and rule packs."""
+        cat = load_catalog()
+        attacks = list(cat.by_id().values())
+        cats = sorted({a.category for a in attacks})
+        return {"profiles": list(PROFILES),
+                "categories": [{"id": c, "name": CATEGORY_NAMES.get(c, c)} for c in cats],
+                "techniques": [{"id": a.id, "category": a.category, "name": a.name, "status": a.status}
+                               for a in attacks],
+                "rule_packs": list(RULE_PACKS)}
+
+    @app.get("/history")
+    async def history(limit: int = 20, target: str | None = None, _key: str = Depends(require_key)) -> dict:
+        if not db_path:
+            raise HTTPException(status_code=503, detail="no scan store configured on the server")
+        return {"scans": scanstore.recent_scans(db_path, limit=max(1, min(limit, 200)), target=target)}
+
+    @app.get("/history/{run_id}")
+    async def history_detail(run_id: str, _key: str = Depends(require_key)) -> dict:
+        if not db_path:
+            raise HTTPException(status_code=503, detail="no scan store configured on the server")
+        detail = scanstore.scan_detail(db_path, run_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="unknown run id")
+        return detail
 
     app.state.job_store = store          # exposed for tests / introspection
     app.state.rate_limiter = limiter

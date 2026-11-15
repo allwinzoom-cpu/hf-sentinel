@@ -172,12 +172,14 @@ def _present_key(authorization: str | None, x_api_key: str | None) -> str | None
 
 def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = None,
                signers_file: str | None = None, rate_per_min: int = DEFAULT_RATE_PER_MIN,
-               max_concurrent: int = 2, max_jobs: int = 1000):
+               max_concurrent: int = 2, max_jobs: int = 1000, db_path: str | None = None):
     """Build the FastAPI app. `scope_file`/`signers_file` set the server-side authorized scope (deny-by-default without
-    one); `api_keys` (or ``HFSENTINEL_API_KEYS``) are the accepted keys. Raises RuntimeError if FastAPI is not installed."""
+    one); `api_keys` (or ``HFSENTINEL_API_KEYS``) are the accepted keys. `db_path` (or ``HFSENTINEL_DB``) records every
+    scan to a SQLite store, server-side only. Raises RuntimeError if FastAPI is not installed."""
     if not FASTAPI_AVAILABLE:
         raise RuntimeError("FastAPI is not installed; install the optional extra: pip install 'hfsentinel[api]'")
     keys = load_api_keys(api_keys)
+    db_path = db_path or os.environ.get("HFSENTINEL_DB")  # server-configured; a client can never choose where we persist
     store = JobStore(max_jobs=max_jobs)
     limiter = RateLimiter(rate_per_min)
     pool = ThreadPoolExecutor(max_workers=max(1, max_concurrent), thread_name_prefix="hfs-scan")
@@ -198,7 +200,7 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     def _run(job_id: str, target: str, kwargs: dict) -> None:
         store.update(job_id, status="running")
         try:
-            result = sdk.scan(target, scope_file=scope_file, signers_file=signers_file, **kwargs)
+            result = sdk.scan(target, scope_file=scope_file, signers_file=signers_file, db_path=db_path, **kwargs)
             store.update(job_id, status="completed", result=result.to_dict(), finished=_now())
         except ScopeError as e:
             store.update(job_id, status="failed", error=str(e), error_kind="scope", finished=_now())

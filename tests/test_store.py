@@ -2,9 +2,10 @@
 and one row per confirmed finding; writes are idempotent on run_id; and the CLI `scan --db` captures a real scan."""
 import sqlite3
 
+import pytest
 from typer.testing import CliRunner
 
-from hfsentinel import cli, store
+from hfsentinel import api, cli, sdk, store
 from hfsentinel.testing import vuln_target
 
 REPORT = {
@@ -78,3 +79,57 @@ def test_cli_scan_records_every_scan_to_the_db(tmp_path):
     # coverage rows exist for every technique the report listed
     cov = conn.execute("SELECT COUNT(*) FROM coverage WHERE run_id=?", (scan["run_id"],)).fetchone()[0]
     assert cov == scan["techniques_total"] > 0
+
+
+def test_sdk_scan_records_to_db(tmp_path):
+    # the SDK path records every scan when db_path is set (the service reuses this)
+    srv, url = vuln_target.serve(profile="high", seed=3)
+    db = tmp_path / "scans.db"
+    try:
+        uri = f"openai+{url}#{vuln_target.MODEL_ID}"
+        result = sdk.scan(uri, profile="quick", trials=3, max_tokens=32, seed=1, db_path=str(db))
+    finally:
+        srv.shutdown()
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    scan = conn.execute("SELECT * FROM scans WHERE run_id=?", (result.run_id,)).fetchone()
+    assert scan is not None and scan["target_ref"] == uri
+    assert conn.execute("SELECT COUNT(*) FROM coverage WHERE run_id=?", (result.run_id,)).fetchone()[0] > 0
+
+
+def test_sdk_store_error_never_sinks_the_scan(tmp_path):
+    # a store failure must not fail a completed scan: point db at an un-creatable path, scan still returns
+    srv, url = vuln_target.serve(seed=4)
+    try:
+        uri = f"openai+{url}#{vuln_target.MODEL_ID}"
+        bad_db = tmp_path / "nope.db" / "scans.db"  # parent is a file-less path under a non-dir; mkdir may still work...
+        (tmp_path / "nope.db").write_text("i am a file, not a directory")  # ...so force the parent to be a FILE
+        result = sdk.scan(uri, profile="quick", trials=2, max_tokens=32, seed=1, db_path=str(bad_db))
+    finally:
+        srv.shutdown()
+    assert result.run_id and result.report is not None  # scan completed despite the store write failing
+
+
+@pytest.mark.skipif(not api.FASTAPI_AVAILABLE, reason="FastAPI not installed (optional `api` extra)")
+def test_api_service_forwards_db_path_to_every_scan(monkeypatch, tmp_path):
+    # the service records every scan server-side: create_app(db_path=...) must forward it into sdk.scan
+    from fastapi.testclient import TestClient
+    seen = {}
+
+    def fake_scan(target, **kwargs):
+        seen["db_path"] = kwargs.get("db_path")
+
+        class _R:
+            def to_dict(self):
+                return {"run_id": "x", "grade": {}, "findings": []}
+        return _R()
+
+    monkeypatch.setattr(api.sdk, "scan", fake_scan)
+    db = str(tmp_path / "service.db")
+    client = TestClient(api.create_app(api_keys=["secret"], db_path=db))
+    h = {"X-API-Key": "secret"}
+    job = client.post("/scans", json={"target": "openai+http://127.0.0.1:1/v1#m"}, headers=h).json()["job_id"]
+    for _ in range(50):
+        if client.get(f"/scans/{job}", headers=h).json()["status"] in ("completed", "failed"):
+            break
+    assert seen["db_path"] == db  # a client never sets this; the server configures it

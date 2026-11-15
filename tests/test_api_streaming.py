@@ -78,3 +78,10 @@ def test_submit_returns_stream_token_and_sse_streams_events(monkeypatch):
 
 def test_events_unknown_job_is_404():
     assert _client().get("/scans/nope/events?token=x").status_code == 404
+
+
+def test_console_is_served_at_root():
+    # the operator console is served same-origin (no auth to fetch the page; its own API calls carry the key)
+    r = _client().get("/")
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+    assert "Sentinel Console" in r.text and "/catalog" in r.text and "EventSource" in r.text

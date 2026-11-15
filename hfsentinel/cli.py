@@ -329,6 +329,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          engines: Annotated[bool, typer.Option("--engines/--no-engines", help="Also run engine-owned techniques "
                                                "(catalog B via the engine images); needs Docker, so run outside "
                                                "the hardened container.")] = False,
+         full: Annotated[bool, typer.Option("--full", help="Maximum coverage: the deep profile plus engines and judges "
+                                            "(auto-uses the claude judge CLI if present). Unlocks every catalog "
+                                            "technique; the engine-owned ones need Docker.")] = False,
          system_one: Annotated[str | None, typer.Option("--system-one", metavar="URL", help="Laya System-1 "
                                                "server URL (engines/laya --serve); advisory triage/routing, logged "
                                                "in the report. Off = every response goes to System-2.")] = None,
@@ -433,6 +436,15 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
                                                        "--save-transcripts/--redact")] = None,
          ) -> None:
     """Scan an authorized target. Refuses without a verified scope file (fail-closed)."""
+    if full:  # one switch for maximum coverage: deep profile + engines + judges, auto-using the claude judge if present
+        profile = profile or "deep"
+        engines = judges = True
+        if judge_cli is None:
+            from hfsentinel.judges.cli_judge import available
+            judge_cli = "claude" if available("claude") else ("codex" if available("codex") else None)
+        typer.echo("coverage  --full: deep profile + engines + judges"
+                   + (f" + {judge_cli} judge" if judge_cli else " (no judge CLI found — judge-scored checks stay N/A)")
+                   + " · engine-owned techniques need Docker")
     flags = {k: v for k, v in locals().items() if k in FLAG_PATHS}
     try:
         res = resolve_controls(flags, load_config(config) if config else None)

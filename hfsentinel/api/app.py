@@ -212,6 +212,17 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     app = FastAPI(title="HF-Sentinel API", version="0.1.0",
                   description="Dynamic black-box LLM security scanner — async job API.")
 
+    @app.middleware("http")
+    async def _security_headers(request, call_next):
+        """Harden every response for the browser-facing console: block MIME sniffing, framing (clickjacking) and
+        referrer leakage. No CSP beyond frame-ancestors, so the self-contained console's inline assets keep working."""
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        return response
+
     async def require_key(authorization: str | None = Header(default=None),
                           x_api_key: str | None = Header(default=None)) -> str:
         if not keys:

@@ -91,6 +91,17 @@ def test_api_key_auth_accepts_any_configured_key_and_rejects_others():
     assert c.get("/catalog").status_code == 401                                      # no key
 
 
+def test_security_headers_on_every_response():
+    # the browser-facing service hardens responses against sniffing, clickjacking and referrer leakage
+    c = _client()
+    for path in ("/", "/healthz"):
+        h = c.get(path).headers
+        assert h["x-content-type-options"] == "nosniff"
+        assert h["x-frame-options"] == "DENY"
+        assert h["referrer-policy"] == "no-referrer"
+        assert "frame-ancestors 'none'" in h["content-security-policy"]
+
+
 def test_console_is_served_at_root():
     # the operator console is served same-origin (no auth to fetch the page; its own API calls carry the key)
     r = _client().get("/")

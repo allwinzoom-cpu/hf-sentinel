@@ -900,6 +900,35 @@ def report(findings: Annotated[Path, typer.Argument(help="Findings JSON written 
 
 
 @app.command()
+def serve(host: Annotated[str, typer.Option(help="Bind address.")] = "127.0.0.1",
+          port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
+          scope: Annotated[Path | None, typer.Option(help="Signed scope file authorizing targets (deny-by-default "
+                                                     "without one).")] = None,
+          signers: Annotated[Path | None, typer.Option(help="OpenSSH allowed_signers trusted to sign scope files.")]
+          = None,
+          db: Annotated[Path | None, typer.Option("--db", help="Scan-event store (defaults to $HFSENTINEL_DB).")] = None,
+          rate_per_min: Annotated[int, typer.Option(help="Per-key request rate limit.")] = 30) -> None:
+    """Launch the API + operator console and print its URL, so scans can be run from the browser. Requires the api extra
+    (`pip install 'hfsentinel[api]'`). API keys come from $HFSENTINEL_API_KEYS (comma-separated); with none set, scan
+    routes refuse by design (deny-by-default). The authorized scope is server-side — a client can never choose a target."""
+    from hfsentinel.api import FASTAPI_AVAILABLE, create_app
+    if not FASTAPI_AVAILABLE:
+        raise _fail("the API extra is not installed — pip install 'hfsentinel[api]'", EXIT_UNSUPPORTED)
+    try:
+        import uvicorn
+    except ImportError:
+        raise _fail("uvicorn is not installed — pip install 'hfsentinel[api]'", EXIT_UNSUPPORTED)
+    service = create_app(scope_file=str(scope) if scope else None,
+                         signers_file=str(signers) if signers else None,
+                         db_path=str(db) if db else None, rate_per_min=rate_per_min)
+    typer.echo(f"console   http://{host}:{port}/")
+    typer.echo("api       /healthz · /catalog · /scans (POST) · /scans/{id}/events (SSE) · /history")
+    if not os.environ.get("HFSENTINEL_API_KEYS"):
+        typer.echo("warning   no HFSENTINEL_API_KEYS set — scan routes refuse until keys are configured")
+    uvicorn.run(service, host=host, port=port, log_level="warning")
+
+
+@app.command()
 def history(db: Annotated[Path | None, typer.Option("--db", help="Scan store written by `scan --db` "
                                                     "(defaults to $HFSENTINEL_DB).")] = None,
             run: Annotated[str | None, typer.Option("--run", help="Show one scan's coverage and findings by run id.")]

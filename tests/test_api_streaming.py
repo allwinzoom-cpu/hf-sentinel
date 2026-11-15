@@ -80,6 +80,36 @@ def test_events_unknown_job_is_404():
     assert _client().get("/scans/nope/events?token=x").status_code == 404
 
 
+def test_cli_serve_launches_the_api_and_console():
+    # `hfsentinel serve` builds the service and hands it to uvicorn; we stub uvicorn so nothing blocks
+    import sys
+    import types
+
+    from fastapi.testclient import TestClient
+    from typer.testing import CliRunner
+
+    from hfsentinel import cli
+    captured = {}
+    fake = types.ModuleType("uvicorn")
+    fake.run = lambda service, **kw: captured.update(service=service, kw=kw)
+    old = sys.modules.get("uvicorn")
+    sys.modules["uvicorn"] = fake
+    try:
+        res = CliRunner().invoke(cli.app, ["serve", "--host", "127.0.0.1", "--port", "9999"])
+    finally:
+        if old is not None:
+            sys.modules["uvicorn"] = old
+        else:
+            sys.modules.pop("uvicorn", None)
+    assert res.exit_code == 0, res.output
+    assert "console" in res.output and "9999" in res.output
+    assert captured["kw"]["port"] == 9999 and captured["kw"]["host"] == "127.0.0.1"
+    # the service it handed uvicorn is the real app: it serves the console and healthz
+    client = TestClient(captured["service"])
+    assert client.get("/healthz").status_code == 200
+    assert "Sentinel Console" in client.get("/").text
+
+
 def test_api_key_auth_accepts_any_configured_key_and_rejects_others():
     # keys are compared in constant time; every configured key is accepted, anything else is 401
     from fastapi.testclient import TestClient

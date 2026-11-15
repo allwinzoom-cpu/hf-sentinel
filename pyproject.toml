@@ -30,6 +30,7 @@ include = ["hfsentinel*"]
 
 [tool.setuptools.package-data]
 "hfsentinel.attacks" = ["*.yaml", "*.txt"]
+"hfsentinel.api" = ["static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

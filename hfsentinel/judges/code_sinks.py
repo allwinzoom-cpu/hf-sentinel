@@ -58,6 +58,11 @@ CREDENTIAL_RULES = (
     ("CWE-798", "hardcoded-google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
     ("CWE-798", "hardcoded-stripe-key", re.compile(r"\b[rs]k_live_[0-9A-Za-z]{24}\b")),
     ("CWE-798", "hardcoded-slack-token", re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")),
+    ("CWE-798", "hardcoded-github-pat", re.compile(r"\bgithub_pat_[0-9A-Za-z_]{22,}\b")),
+    ("CWE-798", "hardcoded-gitlab-pat", re.compile(r"\bglpat-[0-9A-Za-z_-]{20,}\b")),
+    ("CWE-798", "hardcoded-npm-token", re.compile(r"\bnpm_[0-9A-Za-z]{36}\b")),
+    ("CWE-798", "hardcoded-sendgrid-key", re.compile(r"\bSG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}\b")),
+    ("CWE-798", "hardcoded-google-oauth-token", re.compile(r"\bya29\.[0-9A-Za-z_-]{30,}")),
 )
 
 

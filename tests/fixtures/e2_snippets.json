@@ -409,6 +409,11 @@
    "id": "n_perm1",
    "expect": [],
    "code": "import os\ndef fix(p):\n    os.chmod(p, 0o644)\n"
+  },
+  {
+   "id": "n_cred0",
+   "expect": [],
+   "code": "GITHUB_PAT = os.environ[\"GITHUB_PAT\"]\nTOKEN = \"replace-with-your-token\"\n"
   }
  ]
 }

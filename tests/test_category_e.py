@@ -42,6 +42,27 @@ def test_e2_import_alias_tracking():
     assert code_sinks.cwes("import pickle as p\np.loads(b)\n") == {"CWE-502"}
 
 
+# Hardcoded-credential formats (CWE-798). The token is assembled at runtime from a prefix + body held as separate source
+# literals, so no committed file ever contains a contiguous secret-shaped string (which a secret scanner would flag) —
+# yet the string handed to the detector is contiguous. Bodies are obviously fake fixed characters.
+@pytest.mark.parametrize("prefix, body", [
+    ("AKIA", "A" * 16),                        # AWS access key
+    ("ghp" + "_", "a" * 36),                    # GitHub classic PAT
+    ("github" + "_pat_", "A" * 30),             # GitHub fine-grained PAT
+    ("glpat" + "-", "A" * 24),                  # GitLab PAT
+    ("npm" + "_", "a" * 36),                     # npm token
+    ("SG" + ".", "A" * 22 + "." + "B" * 43),    # SendGrid
+    ("ya29" + ".", "A" * 40),                    # Google OAuth token
+    ("AIza", "A" * 35),                         # Google API key
+])
+def test_hardcoded_credential_formats_flag_cwe_798(prefix, body):
+    assert "CWE-798" in code_sinks.cwes(f'TOKEN = "{prefix}{body}"\n')
+
+
+def test_credential_scan_ignores_placeholders_and_env_lookups():
+    assert code_sinks.cwes('import os\nKEY = os.environ["API_KEY"]\nTOKEN = "replace-with-your-token"\n') == set()
+
+
 # ---- E1: render model ----
 @pytest.mark.parametrize("text, construct", [
     ('<script>alert(1)</script>', "script-element"),

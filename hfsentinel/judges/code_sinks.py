@@ -23,6 +23,13 @@ UNSAFE_YAML_LOADERS = {"Loader", "UnsafeLoader", "FullLoader"}
 # defusedxml are safe by default and are deliberately not listed (alias tracking keeps them apart).
 XXE_PARSERS = {"lxml.etree.parse", "lxml.etree.fromstring", "lxml.etree.XML", "lxml.etree.iterparse"}
 WEAK_HASHES = {"hashlib.md5", "hashlib.sha1"}
+# CWE-327 weak ciphers. pycryptodome/pycrypto constructors for broken or obsolete algorithms (DES, 3DES, RC2, RC4,
+# Blowfish, XOR); the `cryptography` library's equivalents are matched by the last component on an `algorithms` module.
+WEAK_CIPHER_CTORS = {"Crypto.Cipher.DES.new", "Crypto.Cipher.DES3.new", "Crypto.Cipher.ARC2.new",
+                     "Crypto.Cipher.ARC4.new", "Crypto.Cipher.Blowfish.new", "Crypto.Cipher.XOR.new",
+                     "Cryptodome.Cipher.DES.new", "Cryptodome.Cipher.DES3.new", "Cryptodome.Cipher.ARC4.new",
+                     "Cryptodome.Cipher.Blowfish.new"}
+WEAK_CIPHER_ALGOS = {"TripleDES", "ARC4", "Blowfish", "IDEA", "CAST5", "SEED"}  # cryptography.hazmat ...algorithms.*
 SQL_METHODS = {"execute", "executemany", "executescript", "raw", "query", "read_sql", "read_sql_query"}
 MAX_CODE_CHARS = 200_000
 
@@ -53,6 +60,12 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
         r"\bjinja2\.Template\s*\(\s*(?![\"'])")),
     # CWE-79: escape-bypass (mark_safe/Markup on a non-literal) or autoescape explicitly turned off.
     ("CWE-79", "xss-escape-bypass", re.compile(r"\b(?:mark_safe|Markup)\s*\(\s*(?![\"'])|autoescape\s*=\s*False")),
+    # CWE-327: broken/obsolete block cipher (DES/3DES/RC2/RC4/Blowfish/IDEA/CAST5/SEED) or ECB mode (leaks plaintext
+    # structure). Matched on qualified forms only, so AES/GCM/ChaCha and unrelated identifiers never match.
+    ("CWE-327", "ecb-mode", re.compile(r"\bMODE_ECB\b|\bmodes\.ECB\s*\(")),
+    ("CWE-327", "weak-cipher-algorithm", re.compile(
+        r"\b(?:Crypto|Cryptodome)\.Cipher\.(?:DES|DES3|ARC2|ARC4|Blowfish|XOR)\b|"
+        r"\balgorithms\.(?:TripleDES|ARC4|Blowfish|IDEA|CAST5|SEED)\s*\(")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
@@ -202,6 +215,16 @@ class _Visitor(ast.NodeVisitor):
         autoescape = kwargs.get("autoescape")
         if isinstance(autoescape, ast.Constant) and autoescape.value is False:
             self._add("CWE-79", "autoescape-disabled", node)
+        # CWE-327: a broken/obsolete cipher. pycryptodome DES/3DES/RC2/RC4/Blowfish/XOR constructors, or cryptography's
+        # algorithms.TripleDES/ARC4/Blowfish/IDEA/CAST5/SEED. Alias tracking keeps AES/ChaCha20 (strong) from matching.
+        parts = name.split(".")
+        if name in WEAK_CIPHER_CTORS or (len(parts) >= 2 and parts[-2] == "algorithms"
+                                         and parts[-1] in WEAK_CIPHER_ALGOS):
+            self._add("CWE-327", "weak-cipher-algorithm", node)
+        # CWE-327: ECB mode leaks plaintext structure (identical blocks encrypt identically). modes.ECB() is a call here;
+        # the MODE_ECB constant passed as an argument is caught by visit_Attribute below.
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "ECB":
+            self._add("CWE-327", "ecb-mode", node)
         verify, check_hostname = kwargs.get("verify"), kwargs.get("check_hostname")
         verify_false = isinstance(verify, ast.Constant) and verify.value is False
         # CWE-347: a JWT decoded without verifying its signature is an auth bypass — jwt.decode(..., verify=False) or
@@ -223,6 +246,12 @@ class _Visitor(ast.NodeVisitor):
             debug = kwargs.get("debug")
             if isinstance(debug, ast.Constant) and debug.value is True:
                 self._add("CWE-489", "debug-mode-enabled", node)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        # CWE-327: the ECB mode constant (e.g. AES.MODE_ECB) appears as an argument, not a call, so it is caught here.
+        if node.attr == "MODE_ECB":
+            self._add("CWE-327", "ecb-mode", node)
         self.generic_visit(node)
 
 

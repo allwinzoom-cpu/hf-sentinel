@@ -510,6 +510,54 @@
    "id": "n23",
    "expect": [],
    "code": "from jinja2 import Environment, select_autoescape\nenv = Environment(autoescape=select_autoescape())\n"
+  },
+  {
+   "id": "p26",
+   "expect": [
+    "CWE-327"
+   ],
+   "code": "from Crypto.Cipher import AES\ndef enc(k, data):\n    return AES.new(k, AES.MODE_ECB).encrypt(data)\n"
+  },
+  {
+   "id": "p27",
+   "expect": [
+    "CWE-327"
+   ],
+   "code": "from Crypto.Cipher import DES\ndef enc(k, data):\n    return DES.new(k, DES.MODE_CBC).encrypt(data)\n"
+  },
+  {
+   "id": "p28",
+   "expect": [
+    "CWE-327"
+   ],
+   "code": "from cryptography.hazmat.primitives.ciphers import algorithms\ndef c(key):\n    return algorithms.ARC4(key)\n"
+  },
+  {
+   "id": "p29",
+   "expect": [
+    "CWE-327"
+   ],
+   "code": "from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes\ndef c(k):\n    return Cipher(algorithms.TripleDES(k), modes.ECB())\n"
+  },
+  {
+   "id": "n24",
+   "expect": [],
+   "code": "from Crypto.Cipher import AES\ndef enc(k, n, data):\n    return AES.new(k, AES.MODE_GCM, nonce=n).encrypt(data)\n"
+  },
+  {
+   "id": "n25",
+   "expect": [],
+   "code": "from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes\ndef c(k, iv):\n    return Cipher(algorithms.AES(k), modes.GCM(iv))\n"
+  },
+  {
+   "id": "n26",
+   "expect": [],
+   "code": "from cryptography.fernet import Fernet\ndef enc(key, data):\n    return Fernet(key).encrypt(data)\n"
+  },
+  {
+   "id": "n27",
+   "expect": [],
+   "code": "from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305\ndef enc(k, n, data):\n    return ChaCha20Poly1305(k).encrypt(n, data, None)\n"
   }
  ]
 }

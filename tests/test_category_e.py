@@ -90,6 +90,19 @@ def test_xss_autoescape_disabled_only_on_literal_false():
     assert code_sinks.cwes("def f(:\n    mark_safe(user)\n") == {"CWE-79"}
 
 
+def test_weak_cipher_and_ecb_mode_vs_strong_crypto():
+    # ECB mode and broken ciphers are flagged; AES-GCM / ChaCha20 / Fernet are not (alias tracking keeps them apart)
+    assert code_sinks.cwes("from Crypto.Cipher import AES\nAES.new(k, AES.MODE_ECB)\n") == {"CWE-327"}
+    assert code_sinks.cwes("from Crypto.Cipher import DES\nDES.new(k, DES.MODE_CBC)\n") == {"CWE-327"}
+    assert code_sinks.cwes("from cryptography.hazmat.primitives.ciphers import algorithms\nalgorithms.ARC4(key)\n") \
+        == {"CWE-327"}
+    assert code_sinks.cwes("from Crypto.Cipher import AES\nAES.new(k, AES.MODE_GCM, nonce=n)\n") == set()
+    assert code_sinks.cwes("from cryptography.hazmat.primitives.ciphers import algorithms\nalgorithms.AES(key)\n") \
+        == set()
+    # regex fallback catches ECB / weak algorithm in unparsable code
+    assert "CWE-327" in code_sinks.cwes("def f(:\n    AES.new(k, AES.MODE_ECB)\n")
+
+
 def test_credential_scan_ignores_placeholders_and_env_lookups():
     assert code_sinks.cwes('import os\nKEY = os.environ["API_KEY"]\nTOKEN = "replace-with-your-token"\n') == set()
 

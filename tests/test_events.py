@@ -1,6 +1,10 @@
 """Scan progress events: the event helper shape, and that sdk.scan streams scan_started → technique_done* →
 scan_completed with enriched per-technique data, while a failing subscriber never disturbs the scan."""
-from hfsentinel import events, sdk
+import json as _json
+
+from typer.testing import CliRunner
+
+from hfsentinel import cli, events, sdk
 from hfsentinel.testing import vuln_target
 
 
@@ -41,6 +45,32 @@ def test_scan_streams_progress_events():
     result_grade = result.grade.get("overall") if isinstance(result.grade, dict) else result.grade.overall
     assert done["run_id"] == result.run_id and done["grade"] == result_grade
     assert done["confirmed"] == result.confirmed
+
+
+def test_cli_events_flag_emits_the_same_normalized_stream(tmp_path):
+    # `scan --events` emits the same event shape the SDK/API/UI stream, as JSON lines (one model across the whole chain)
+    srv, base = vuln_target.serve(profile="high", seed=7)
+    try:
+        uri = f"openai+{base}#{vuln_target.MODEL_ID}"
+        res = CliRunner().invoke(cli.app, ["scan", uri, "--via", "direct", "--trials", "3",
+                                           "--out", str(tmp_path / "rep"), "--events"])
+    finally:
+        srv.shutdown()
+    assert res.exit_code in (0, cli.EXIT_FINDINGS), res.output
+    evs = []
+    for line in res.output.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                d = _json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(d, dict) and "type" in d:   # our events key on "type"; ignore the target's request logs
+                evs.append(d)
+    kinds = [e["type"] for e in evs]
+    assert "scan_started" in kinds and "scan_completed" in kinds
+    techs = [e for e in evs if e["type"] == "technique_done"]
+    assert techs and all(e["catalog_id"] and e["outcome"] in ("confirmed", "hit", "no-hit") for e in techs)
 
 
 def test_failing_subscriber_never_sinks_the_scan():

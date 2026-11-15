@@ -149,6 +149,7 @@ def scan(target: str, *,
          system_one_url: str | None = None,
          system_one_multilingual_url: str | None = None,
          negotiate_features: bool = False,
+         db_path: str | None = None,
          controls_config: dict | None = None) -> ScanResult:
     """Run a full scan and return a :class:`ScanResult`.
 
@@ -215,6 +216,12 @@ def scan(target: str, *,
     report_doc = assemble_report(resolved=resolved, ref=controls.target, controls=controls, attestation=attestation,
                                  recon=recon, plan=plan, result=result, ledger=gov.ledger.snapshot(),
                                  run_id=run_id, started=started, campaign=campaign)
+
+    if db_path:  # capture the scan (summary + per-technique coverage + confirmed findings); never fail the scan on it
+        import contextlib
+        with contextlib.suppress(Exception):  # persistence is best-effort; a store error must not sink a completed scan
+            from hfsentinel import store
+            store.record_scan(db_path, report_doc)
 
     return ScanResult(run_id=run_id, target=target, report=report_doc, findings=list(report_doc.findings),
                       grade=report_doc.grade, decisions=result.decisions, recon=recon, started=started)

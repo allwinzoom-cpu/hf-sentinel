@@ -385,6 +385,30 @@
    "id": "n_jwt0",
    "expect": [],
    "code": "import jwt\ndef verify(t, k):\n    return jwt.decode(t, k, algorithms=[\"HS256\"])\n"
+  },
+  {
+   "id": "p_perm0",
+   "expect": [
+    "CWE-732"
+   ],
+   "code": "import os\ndef fix(p):\n    os.chmod(p, 0o777)\n"
+  },
+  {
+   "id": "p_perm1",
+   "expect": [
+    "CWE-732"
+   ],
+   "code": "import os\ndef fix(p):\n    os.chmod(p, 0o666)\n"
+  },
+  {
+   "id": "n_perm0",
+   "expect": [],
+   "code": "import os\ndef fix(p):\n    os.chmod(p, 0o755)\n"
+  },
+  {
+   "id": "n_perm1",
+   "expect": [],
+   "code": "import os\ndef fix(p):\n    os.chmod(p, 0o644)\n"
   }
  ]
 }

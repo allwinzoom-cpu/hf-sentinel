@@ -45,6 +45,7 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-489", "debug-mode-enabled", re.compile(r"\.run\s*\([^)]*\bdebug\s*=\s*True")),
     ("CWE-347", "jwt-signature-unverified", re.compile(
         r"jwt\.decode\s*\([^)]*verify\s*=\s*False|[\"']verify_signature[\"']\s*:\s*False")),
+    ("CWE-732", "world-writable-permissions", re.compile(r"\bchmod\s*\([^)]*,\s*0o?[0-7]*[2367]\s*\)")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a
@@ -154,6 +155,11 @@ class _Visitor(ast.NodeVisitor):
             self._add("CWE-611", "xxe-entity-resolution", node)
         if name == "tempfile.mktemp":  # CWE-377: deprecated, racy — the file can be swapped between name and use
             self._add("CWE-377", "insecure-temp-file", node)
+        # CWE-732: a world-writable mode on os.chmod — any user can replace the file's contents. The "other" octal digit
+        # carries the write bit (2), so a literal mode with bit 0o002 set is world-writable; 0o755/0o644 are clean.
+        if name == "os.chmod" and isinstance(second := (node.args[1] if len(node.args) > 1 else None), ast.Constant) \
+                and isinstance(second.value, int) and second.value & 0o002:
+            self._add("CWE-732", "world-writable-permissions", node)
         if name in ("yaml.load", "yaml.load_all"):
             loader = kwargs.get("Loader") or (node.args[1] if len(node.args) > 1 else None)
             if loader is None or _dotted(loader).split(".")[-1] in UNSAFE_YAML_LOADERS:

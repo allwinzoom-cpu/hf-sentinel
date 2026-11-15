@@ -11,6 +11,38 @@ Everything builds, tests and runs in **Linux containers only** (DECISIONS D-009)
 [definitions](docs/definitions.md) (what counts as a finding) ·
 [github-action](docs/github-action.md) (PR security gate: scan → SARIF → fail-on).
 
+## Operator console & API
+
+Run scans from a browser instead of the CLI. `hfsentinel serve` launches the FastAPI service and serves the operator
+console at `/` (requires the `api` extra: `pip install 'hfsentinel[api]'`).
+
+```bash
+export HFSENTINEL_API_KEYS=your-key      # deny-by-default: scan routes refuse when no keys are configured
+hfsentinel serve --db scans.db           # console at http://127.0.0.1:8000/  (--scope/--signers set the server-side scope)
+```
+
+The console — a launch panel (rule packs, categories, profile, knobs), a **live streamed run**, and a history dashboard
+with per-scan **drill-down** — drives the same API, same-origin:
+
+- `GET /` — the console (static) · `GET /catalog` — profiles, categories, techniques, rule packs (the UI's options)
+- `POST /scans` — queue a scan; returns `job_id` + a per-job `stream_token` · `GET /scans/{id}` — status / final report
+- `GET /scans/{id}/events` — Server-Sent Events (live progress), authenticated by the stream token, so the API key
+  never appears in a URL or access log
+- `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, confirmed findings
+
+Auth is a constant-time API key (`Authorization: Bearer` or `X-API-Key`), per-key rate-limited; every response carries
+browser-hardening headers (`nosniff`, `frame-ancestors 'none'`, `no-referrer`). The authorized scope is server-side — a
+client can never point the scanner at an out-of-scope target.
+
+Every scan (CLI, SDK, or service) can record to a SQLite event store and emit one normalized progress stream
+(`scan_started` → `technique_done` → `scan_completed`, shared by CLI/SDK/API/UI):
+
+```bash
+hfsentinel scan <target> --scope scope.yaml --db scans.db --events   # record every scan + emit JSON events on stderr
+hfsentinel history --db scans.db [--run <id>]                         # list recent scans, or one scan's coverage+findings
+hfsentinel prune   --db scans.db --keep 1000                         # retention: keep the newest N, drop older scans
+```
+
 ## Running in containers
 
 ```bash

@@ -80,6 +80,17 @@ def test_events_unknown_job_is_404():
     assert _client().get("/scans/nope/events?token=x").status_code == 404
 
 
+def test_api_key_auth_accepts_any_configured_key_and_rejects_others():
+    # keys are compared in constant time; every configured key is accepted, anything else is 401
+    from fastapi.testclient import TestClient
+    c = TestClient(api.create_app(api_keys=["alpha-key", "beta-key"]))
+    assert c.get("/catalog", headers={"X-API-Key": "alpha-key"}).status_code == 200
+    assert c.get("/catalog", headers={"X-API-Key": "beta-key"}).status_code == 200
+    assert c.get("/catalog", headers={"X-API-Key": "alpha-ke"}).status_code == 401   # prefix of a real key is rejected
+    assert c.get("/catalog", headers={"X-API-Key": "wrong"}).status_code == 401
+    assert c.get("/catalog").status_code == 401                                      # no key
+
+
 def test_console_is_served_at_root():
     # the operator console is served same-origin (no auth to fetch the page; its own API calls carry the key)
     r = _client().get("/")

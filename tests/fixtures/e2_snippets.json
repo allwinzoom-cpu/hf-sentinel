@@ -558,6 +558,54 @@
    "id": "n27",
    "expect": [],
    "code": "from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305\ndef enc(k, n, data):\n    return ChaCha20Poly1305(k).encrypt(n, data, None)\n"
+  },
+  {
+   "id": "p30",
+   "expect": [
+    "CWE-95"
+   ],
+   "code": "```javascript\nsetTimeout(\"doStuff()\", 500)\n```"
+  },
+  {
+   "id": "p31",
+   "expect": [
+    "CWE-95"
+   ],
+   "code": "```javascript\nconst f = new Function(\"a\", \"return a * 2\")\n```"
+  },
+  {
+   "id": "p32",
+   "expect": [
+    "CWE-79"
+   ],
+   "code": "```javascript\nel.innerHTML = \"<b>\" + userName + \"</b>\"\n```"
+  },
+  {
+   "id": "p33",
+   "expect": [
+    "CWE-79"
+   ],
+   "code": "```javascript\ndocument.write(`<p>${location.hash}</p>`)\n```"
+  },
+  {
+   "id": "n28",
+   "expect": [],
+   "code": "```javascript\nsetTimeout(doStuff, 500)\n```"
+  },
+  {
+   "id": "n29",
+   "expect": [],
+   "code": "```javascript\nel.innerHTML = \"<b>static</b>\"\n```"
+  },
+  {
+   "id": "n30",
+   "expect": [],
+   "code": "```javascript\nel.textContent = userName\n```"
+  },
+  {
+   "id": "n31",
+   "expect": [],
+   "code": "```javascript\nel.innerHTML = DOMPurify.sanitize(dirty)\n```"
   }
  ]
 }

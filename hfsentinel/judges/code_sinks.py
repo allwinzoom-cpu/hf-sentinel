@@ -66,6 +66,14 @@ REGEX_RULES = (  # JavaScript / unparsable fallback
     ("CWE-327", "weak-cipher-algorithm", re.compile(
         r"\b(?:Crypto|Cryptodome)\.Cipher\.(?:DES|DES3|ARC2|ARC4|Blowfish|XOR)\b|"
         r"\balgorithms\.(?:TripleDES|ARC4|Blowfish|IDEA|CAST5|SEED)\s*\(")),
+    # CWE-95 (JS): code executed from a string. setTimeout/setInterval with a string first argument, and new Function(…),
+    # both run their argument as code like eval. A function reference (no quote) passed to the timer is the safe form.
+    ("CWE-95", "js-timer-string", re.compile(r"\b(?:setTimeout|setInterval)\s*\(\s*[\"'`]")),
+    ("CWE-95", "js-new-function", re.compile(r"\bnew\s+Function\s*\(\s*(?![)])")),
+    # CWE-79 (JS): DOM sink assigned HTML built from input — innerHTML/outerHTML or document.write with a concatenation
+    # (+) or a template-literal interpolation (${…}). A constant literal (no + and no ${}) is not matched.
+    ("CWE-79", "dom-xss-sink", re.compile(
+        r"\.(?:inner|outer)HTML\s*=\s*[^;\n]*(?:\+|\$\{)|\bdocument\.write\s*\(\s*[^)\n]*(?:\+|\$\{)")),
 )
 
 # CWE-798: a credential hardcoded in generated code. Keyed on structural provider formats (not variable names), so a

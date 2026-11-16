@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS coverage (
 CREATE TABLE IF NOT EXISTS findings (
     run_id TEXT, finding_id TEXT, catalog_id TEXT, severity TEXT,
     asr REAL, ci_low REAL, ci_high REAL, technique TEXT, evidence_level TEXT, reproducible INTEGER,
+    evidence_excerpt TEXT, baseline_asr REAL, lift REAL, oracle TEXT, owasp TEXT, atlas TEXT,
     PRIMARY KEY (run_id, finding_id),
     FOREIGN KEY (run_id) REFERENCES scans(run_id)
 );
@@ -43,6 +44,15 @@ CREATE INDEX IF NOT EXISTS idx_scans_target ON scans(target_ref);
 CREATE INDEX IF NOT EXISTS idx_coverage_tech ON coverage(catalog_id);
 CREATE INDEX IF NOT EXISTS idx_findings_tech ON findings(catalog_id);
 """
+
+# Columns added after the first release. A store created by an older build has the findings table but not these; SQLite's
+# CREATE TABLE IF NOT EXISTS never alters an existing table, so we add any missing one on connect (ADD COLUMN only, so an
+# older reader still works). Each carries the proof the console drill-down shows: the redacted evidence excerpt (D-015 —
+# already ≤200 chars, never raw traffic), the precision story (baseline ASR + lift), the oracle, and the taxonomy.
+_FINDINGS_ADDED_COLUMNS = {
+    "evidence_excerpt": "TEXT", "baseline_asr": "REAL", "lift": "REAL",
+    "oracle": "TEXT", "owasp": "TEXT", "atlas": "TEXT",
+}
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
@@ -55,7 +65,16 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    _migrate_findings_columns(conn)
     return conn
+
+
+def _migrate_findings_columns(conn: sqlite3.Connection) -> None:
+    """Add any findings column introduced after the store was first created (ADD COLUMN is non-destructive)."""
+    have = {row["name"] for row in conn.execute("PRAGMA table_info(findings)").fetchall()}
+    for col, decl in _FINDINGS_ADDED_COLUMNS.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE findings ADD COLUMN {col} {decl}")  # col/decl are our own literals, not input
 
 
 def _as_dict(report: Any) -> dict:
@@ -115,10 +134,17 @@ def record_scan(db_path: str | Path, report: Any, *, recorded_at: str | None = N
                      t.get("severity")))
             for f in findings:
                 lo, hi = _ci(f, "asr_ci95")
+                ev = f.get("evidence") or {}
+                oracle = f.get("oracle") or {}
                 conn.execute(
-                    "INSERT INTO findings VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO findings (run_id, finding_id, catalog_id, severity, asr, ci_low, ci_high, technique, "
+                    "evidence_level, reproducible, evidence_excerpt, baseline_asr, lift, oracle, owasp, atlas) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (run_id, f.get("finding_id"), f.get("catalog_id"), f.get("severity"), f.get("asr"), lo, hi,
-                     f.get("technique"), f.get("evidence_level"), int(bool(f.get("reproducible")))))
+                     f.get("technique"), f.get("evidence_level"), int(bool(f.get("reproducible"))),
+                     ev.get("redacted_excerpt") or None, f.get("baseline_asr"), f.get("lift"),
+                     oracle.get("name"), ",".join(f.get("owasp") or []) or None,
+                     ",".join(f.get("atlas") or []) or None))
         return run_id
     finally:
         conn.close()
@@ -151,6 +177,17 @@ def recent_scans(db_path: str | Path, *, limit: int = 20, target: str | None = N
         conn.close()
 
 
+def _finding_row(r: sqlite3.Row) -> dict:
+    """A stored finding as the API/console consume it: taxonomy back to lists, reproducible back to bool, with the proof
+    excerpt + precision stats (baseline ASR, lift) so the drill-down shows WHY it was confirmed, not just that it was."""
+    d = dict(r)
+    d["owasp"] = d["owasp"].split(",") if d.get("owasp") else []
+    d["atlas"] = d["atlas"].split(",") if d.get("atlas") else []
+    if "reproducible" in d and d["reproducible"] is not None:
+        d["reproducible"] = bool(d["reproducible"])
+    return d
+
+
 def scan_detail(db_path: str | Path, run_id: str) -> dict | None:
     """One scan with its per-technique coverage and confirmed findings, or None if the run_id is unknown."""
     conn = connect(db_path)
@@ -161,8 +198,9 @@ def scan_detail(db_path: str | Path, run_id: str) -> dict | None:
         coverage = [dict(r) for r in conn.execute(
             "SELECT catalog_id, category, disposition, outcome, reason, hits, trials, asr, severity "
             "FROM coverage WHERE run_id=? ORDER BY catalog_id", (run_id,)).fetchall()]
-        findings = [dict(r) for r in conn.execute(
-            "SELECT catalog_id, severity, asr, ci_low, ci_high, technique FROM findings WHERE run_id=? "
+        findings = [_finding_row(r) for r in conn.execute(
+            "SELECT catalog_id, severity, asr, ci_low, ci_high, technique, evidence_level, reproducible, "
+            "evidence_excerpt, baseline_asr, lift, oracle, owasp, atlas FROM findings WHERE run_id=? "
             "ORDER BY asr DESC", (run_id,)).fetchall()]
         return {"scan": dict(scan), "coverage": coverage, "findings": findings}
     finally:

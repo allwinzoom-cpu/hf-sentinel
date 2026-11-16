@@ -195,6 +195,24 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 .sev-Medium .sevtag{background:var(--warn-soft);color:var(--warn)} .sev-Low .sevtag{background:var(--ok-soft);color:var(--ok)}
 .finding .cwe{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto}
 .finding b{font-size:14px} .finding p{margin:6px 0 0;font-size:12.5px;color:var(--ink-2)}
+/* ---- finding evidence drill-down ---- */
+.finding.hasproof{cursor:pointer}
+.finding .top .caret{margin-left:8px;color:var(--ink-3);transition:transform .15s;flex:0 0 auto}
+.finding.open .top .caret{transform:rotate(90deg)}
+.finding .cwe + .caret{margin-left:0}
+.proof{margin-top:11px;padding-top:11px;border-top:1px dashed var(--border);display:flex;flex-direction:column;gap:11px}
+.proof .pl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;margin-bottom:5px}
+.proof .excerpt{font-family:var(--mono);font-size:12px;line-height:1.5;color:var(--ink-1);background:var(--surface-3);
+  border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+.proof .stats{display:flex;flex-wrap:wrap;gap:7px}
+.proof .stat-chip{font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:7px;background:var(--surface-3);
+  border:1px solid var(--border);color:var(--ink-2)}
+.proof .stat-chip b{font-family:var(--font);font-size:11px;color:var(--ink-3);font-weight:600;margin-right:5px}
+.proof .stat-chip.lift-pos{border-color:var(--crit);color:var(--crit)}
+.proof .taxo{display:flex;flex-wrap:wrap;gap:6px}
+.proof .tx{font-family:var(--mono);font-size:10.5px;padding:3px 7px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--ink-3)}
+.proof .repro{font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+.proof .repro .rk{color:var(--ink-3)}
 
 /* ---- history ---- */
 .statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
@@ -564,8 +582,11 @@ function setStatus(kind,text){ const p=$('#runStatus'); p.classList.toggle('live
 function addFinding(f){ run.findings.push(f); $('#kFind').textContent=run.findings.length;
   const box=$('#findings'); if(run.findings.length===1) box.innerHTML='';
   const d=document.createElement('div'); d.className='finding sev-'+f.severity;
-  d.innerHTML=`<div class="top"><span class="sevtag">${f.severity}</span><b></b><span class="cwe">${f.cwe||f.cid}</span></div><p></p>`;
-  d.querySelector('b').textContent=f.title; d.querySelector('p').textContent=f.detail;
+  const proof = f.raw ? findingProofHTML(f.raw) : '';   // live runs carry the report finding; demo findings have no proof
+  d.innerHTML=`<div class="top"><span class="sevtag"></span><b></b><span class="cwe"></span>${proof?CARET:''}</div><p></p>${proof}`;
+  d.querySelector('.sevtag').textContent=f.severity; d.querySelector('b').textContent=f.title;
+  d.querySelector('.cwe').textContent=f.cwe||f.cid; d.querySelector('p').textContent=f.detail;
+  if(proof) d.classList.add('hasproof');
   box.prepend(d); setGrade(gradeFromFindings(run.findings)); }
 
 /* ---------- demo simulator (stands in for the SSE stream) ---------- */
@@ -653,7 +674,7 @@ async function finishLive(jobId,base,key){ /* pull the completed report for find
   try{ const h=key?{'X-API-Key':key}:{}; const r=await fetch(base+'/scans/'+jobId,{headers:h});
     const j=await r.json(); const rep=j.result||{};
     (rep.findings||[]).forEach(f=>addFinding({cid:f.catalog_id,severity:f.severity,
-      cwe:f.catalog_id,title:f.technique||f.catalog_id,detail:'confirmed · ASR '+Math.round((f.asr||0)*100)+'%'}));
+      cwe:f.catalog_id,title:f.technique||f.catalog_id,detail:'confirmed · ASR '+Math.round((f.asr||0)*100)+'%',raw:f}));
     setGrade((rep.grade&&rep.grade.overall)||gradeFromFindings(run.findings));
     if(rep.run&&rep.run.run_id) showExport(true);   // a finished (or cancelled/partial) report is now downloadable
     loadHistory(base,key);
@@ -754,6 +775,43 @@ function renderHistory(){
 
 /* ---------- history drill-down ---------- */
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CARET='<svg class="caret" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const pct=v=>Math.round((+v||0)*100)+'%';
+/* Build the expandable proof panel for one confirmed finding. Normalises the two shapes we see: the full report finding
+   (live run — evidence:{redacted_excerpt}, asr_ci95:[lo,hi], oracle:{name}, repro:{…}) and the stored history row
+   (evidence_excerpt, ci_low/ci_high, oracle as a string, no repro). Returns '' when there is nothing to show, so a
+   finding with no retained proof stays a plain card. Every interpolated value is escaped — the excerpt is adversarial. */
+function findingProofHTML(f){
+  if(!f) return '';
+  const excerpt = f.evidence_excerpt || (f.evidence && f.evidence.redacted_excerpt) || '';
+  const ci = Array.isArray(f.asr_ci95) ? f.asr_ci95 : (f.ci_low!=null ? [f.ci_low, f.ci_high] : null);
+  const oracle = typeof f.oracle==='string' ? f.oracle : (f.oracle && f.oracle.name) || '';
+  const lvl = f.evidence_level || '';
+  const taxo = [...(f.owasp||[]).map(x=>['OWASP',x]), ...(f.atlas||[]).map(x=>['ATLAS',x])];
+  const repro = f.repro || null;
+  if(!excerpt && !ci && f.baseline_asr==null && f.lift==null && !taxo.length && !repro && !oracle && !lvl) return '';
+  const stats=[];
+  if(f.asr!=null) stats.push(`<span class="stat-chip"><b>ASR</b>${pct(f.asr)}${ci?` (${pct(ci[0])}–${pct(ci[1])})`:''}</span>`);
+  if(f.baseline_asr!=null) stats.push(`<span class="stat-chip"><b>baseline</b>${pct(f.baseline_asr)}</span>`);
+  if(f.lift!=null) stats.push(`<span class="stat-chip${f.lift>0?' lift-pos':''}"><b>lift</b>+${pct(f.lift)}</span>`);
+  if(f.reproducible!=null) stats.push(`<span class="stat-chip"><b>replay</b>${f.reproducible?'reproducible':'recipe-only'}</span>`);
+  const parts=[];
+  if(excerpt){ parts.push(`<div><div class="pl">Evidence${lvl?' · '+esc(lvl):''}${oracle?' · oracle '+esc(oracle):''}</div>`
+    +`<div class="excerpt">${esc(excerpt)}</div></div>`); }
+  else if(lvl||oracle){ parts.push(`<div class="pl">Evidence${lvl?' · '+esc(lvl):''}${oracle?' · oracle '+esc(oracle):''}</div>`); }
+  if(stats.length) parts.push(`<div><div class="pl">Confidence</div><div class="stats">${stats.join('')}</div></div>`);
+  if(repro){ const rk=[];
+    if(repro.seed!=null) rk.push(['seed',repro.seed]); if(repro.trials!=null) rk.push(['trials',repro.trials]);
+    if(repro.temperature!=null) rk.push(['temp',repro.temperature]); if(repro.max_tokens!=null) rk.push(['max_tokens',repro.max_tokens]);
+    if(repro.mutator_chain&&repro.mutator_chain.length) rk.push(['mutators',repro.mutator_chain.join(' › ')]);
+    if(rk.length) parts.push(`<div><div class="pl">Reproduction recipe</div><div class="repro">`
+      +rk.map(([k,v])=>`<span class="rk">${esc(k)}=</span>${esc(v)}`).join('  ')+`</div></div>`); }
+  if(taxo.length) parts.push(`<div><div class="pl">Mapping</div><div class="taxo">`
+    +taxo.map(([k,v])=>`<span class="tx">${esc(k)} ${esc(v)}</span>`).join('')+`</div></div>`);
+  return `<div class="proof">${parts.join('')}</div>`;
+}
+/* One delegated toggle for every expandable finding, live card or history modal alike. */
+document.addEventListener('click',e=>{ const top=e.target.closest('.finding.hasproof > .top'); if(top) top.parentElement.classList.toggle('open'); });
 function closeDetail(){ $('#detail').hidden=true; }
 async function openDetail(row){
   if(!row) return;
@@ -815,9 +873,10 @@ function renderDetailBody(d){
     return `<div class="tech"><span class="cid">${esc(c.catalog_id)}</span>
       <span class="nm"><b>${esc(c.category||'')} · ${esc(c.disposition)}</b><span>${esc(c.reason||c.outcome||'')}${c.asr!=null?' · ASR '+Math.round(c.asr*100)+'%':''}</span></span>
       <span class="st ${st}">${esc(c.severity||c.outcome||c.disposition)}</span></div>`;}).join('');
-  const findCards=finds.map(f=>`<div class="finding sev-${esc(f.severity)}"><div class="top">
+  const findCards=finds.map(f=>{ const proof=findingProofHTML(f);
+    return `<div class="finding sev-${esc(f.severity)}${proof?' hasproof':''}"><div class="top">
       <span class="sevtag">${esc(f.severity)}</span><b>${esc(f.technique||f.catalog_id)}</b>
-      <span class="cwe">${esc(f.catalog_id)}${f.asr!=null?' · ASR '+Math.round(f.asr*100)+'%':''}</span></div></div>`).join('');
+      <span class="cwe">${esc(f.catalog_id)}${f.asr!=null?' · ASR '+Math.round(f.asr*100)+'%':''}</span>${proof?CARET:''}</div>${proof}</div>`;}).join('');
   return `<div class="detsub">Coverage · ${cov.length} techniques</div><div class="techlist">${covRows||'<p class="hint" style="padding:12px 18px">none</p>'}</div>
     <div class="detsub">Findings · ${finds.length}</div><div class="pad"><div class="findings">${findCards||'<p class="hint">no confirmed findings</p>'}</div></div>`;
 }

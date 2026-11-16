@@ -11,6 +11,21 @@ from pydantic import ValidationError
 from hfsentinel.api import app as api
 
 
+# ---- operator console (static asset; no FastAPI needed) ----
+def test_console_does_not_mix_sample_history_into_live_data():
+    """A live (API-backed) console must show only real stored scans — never the fabricated SAMPLE_HISTORY — so a
+    security deployment never presents made-up findings as if they were real. Guards the gating in renderHistory()."""
+    from pathlib import Path
+
+    html = (Path(api.__file__).parent / "static" / "console.html").read_text()
+    # samples are demo-only: appended just when NOT live, never unconditionally
+    assert "API.live?[]:SAMPLE_HISTORY" in html
+    assert "...store.get('runs',[]),...SAMPLE_HISTORY]" not in html  # the old unconditional mix is gone
+    # live mode is server-sourced: the local cache is dropped on detection and a real empty store shows an empty-state
+    assert "if(API.live) store.set('runs',[]);" in html
+    assert "No scans recorded yet" in html
+
+
 # ---- stdlib components (no FastAPI needed) ----
 def test_job_store_lifecycle_and_eviction():
     store = api.JobStore(max_jobs=2)

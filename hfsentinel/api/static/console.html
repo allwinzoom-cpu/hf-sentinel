@@ -453,7 +453,7 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
           <div class="pad"><div class="sevbars" id="sevbars"></div></div>
         </div>
       </div>
-      <div class="note">
+      <div class="note" id="histnote">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
         Sample history shown for the demo. With an API base configured these rows come from the server's scan-event store.
       </div>
@@ -724,8 +724,12 @@ function handleEvent(d){ /* bridges the server event stream → the same rendere
 let API={live:false, base:''};
 async function detectApi(){
   try{ const r=await fetch(API.base+'/healthz'); if(r.ok){ API.live=true; } }catch(e){ API.live=false; }
+  // Live mode is server-sourced only: drop any demo/stale local cache so unverified rows never show as real history;
+  // loadHistory() repopulates from /history (empty-state until then, or if no key / no store is configured).
+  if(API.live) store.set('runs',[]);
   document.querySelectorAll('.demotag').forEach(t=>{ t.textContent=API.live?'live api':'demo mode';
     t.style.color=API.live?'var(--ok)':'var(--warn)'; t.style.background=API.live?'var(--ok-soft)':'var(--warn-soft)'; });
+  renderHistory();  // reflect live/demo immediately (hide the demo note + samples) even before a key is entered
 }
 async function loadCatalog(){ // replace the built-in demo catalog with the server's when connected + keyed
   if(!API.live) return; const key=$('#apikey').value.trim(); if(!key) return;
@@ -745,8 +749,8 @@ async function loadHistory(base,key){
       rid:s.run_id, confirmed:s.confirmed||0,
       target:(s.target_ref||'').split('#').pop().slice(0,32),grade:s.grade||'A',
       crit:0,high:0,med:0,low:0,cov:(s.techniques_run||0)+'/'+(s.techniques_total||0),cost:+(s.cost_usd||0)}));
-    if(rows.length){ store.set('runs',rows.slice(0,20)); renderHistory(); }
-  }catch(e){/* keep sample history */}
+    store.set('runs',rows.slice(0,20)); renderHistory();  // live store is authoritative — set even when empty, so
+  }catch(e){/* on a fetch error keep whatever is shown */}  // stale demo rows never linger over a real (empty) store
 }
 
 /* ---------- launch ---------- */
@@ -775,7 +779,10 @@ function saveHistory(){ const h=store.get('runs',[]);
   store.set('runs',h.slice(0,20)); renderHistory(); }
 let HIST_ROWS=[];
 function renderHistory(){
-  HIST_ROWS=[...store.get('runs',[]),...SAMPLE_HISTORY];
+  // Only the pure demo (no API connected) shows the fabricated SAMPLE_HISTORY; a live console shows ONLY real stored
+  // scans, so a security deployment never presents made-up findings as if they were real.
+  const nt=$('#histnote'); if(nt) nt.hidden=!!API.live;
+  HIST_ROWS=[...store.get('runs',[]),...(API.live?[]:SAMPLE_HISTORY)];
   const rows=HIST_ROWS;
   const tot=rows.length, finds=rows.reduce((a,r)=>a+(r.confirmed??(r.crit+r.high+r.med+r.low)),0);
   const crit=rows.reduce((a,r)=>a+r.crit,0), cost=rows.reduce((a,r)=>a+r.cost,0);
@@ -786,8 +793,9 @@ function renderHistory(){
   $('#histrows').innerHTML=rows.map((r,i)=>`<tr class="hrow" data-idx="${i}" tabindex="0" title="View coverage &amp; findings">
     <td>${r.run}</td><td style="font-family:var(--font)">${r.target}</td>
     <td><span class="gpill g-${r.grade}">${r.grade}</span></td>
-    <td>${r.confirmed??(r.crit+r.high+r.med+r.low)}</td><td>${r.cov}</td><td>$${r.cost.toFixed(2)}</td></tr>`).join('');
-  $$('#histrows tr').forEach(tr=>{ const open=()=>openDetail(HIST_ROWS[+tr.dataset.idx]);
+    <td>${r.confirmed??(r.crit+r.high+r.med+r.low)}</td><td>${r.cov}</td><td>$${r.cost.toFixed(2)}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="hint" style="padding:16px 18px">No scans recorded yet — launch a scan to populate history.</td></tr>';
+  $$('#histrows tr.hrow').forEach(tr=>{ const open=()=>openDetail(HIST_ROWS[+tr.dataset.idx]);
     tr.onclick=open; tr.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();open();} }; });
   const sev={Critical:crit,High:rows.reduce((a,r)=>a+r.high,0),Medium:rows.reduce((a,r)=>a+r.med,0),Low:rows.reduce((a,r)=>a+r.low,0)};
   const max=Math.max(1,...Object.values(sev)); const col={Critical:'var(--crit)',High:'var(--serious)',Medium:'var(--warn)',Low:'var(--ok)'};

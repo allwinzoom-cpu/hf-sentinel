@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from hfsentinel.attacks.catalog import Catalog, load_catalog
 from hfsentinel.engines.nondisclosure import scrub as _nd_scrub
 from hfsentinel.report.build import Report
+from hfsentinel.report.remediation import for_catalog_id
 
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 SECURITY_SEVERITY = {"Critical": "9.5", "High": "8.0", "Medium": "5.5", "Low": "2.0", "Info": "0.5"}
@@ -87,15 +88,26 @@ def to_sarif(report: Report, *, anchor: str = "sentinel.yaml", catalog: Catalog 
     for cid in rule_ids:
         a = by_id[cid]
         tags = ["security", "llm", *a.owasp, *a.atlas][:MAX_TAGS]
-        rules.append({
+        rem = for_catalog_id(cid)
+        help_text = (f"{a.name}: confirmed by a deterministic oracle. OWASP {', '.join(a.owasp)}; "
+                     f"MITRE ATLAS {', '.join(a.atlas)}. The HF-Sentinel report has the rate, confidence "
+                     "interval and evidence hash.")
+        rule = {
             "id": f"hfsentinel/{cid}", "name": re.sub(r"[^A-Za-z0-9]+", "", a.name.title()) or cid,
             "shortDescription": {"text": f"{cid} {a.name}"},
             # The catalog's oracle prose can name upstream judges; report the neutral oracle that ran, scrubbed (16.16).
             "fullDescription": {"text": _nd_scrub(f"{a.name} (catalog {cid}). Success oracle: {oracle_name[cid]}.")},
-            "help": {"text": f"{a.name}: confirmed by a deterministic oracle. OWASP {', '.join(a.owasp)}; "
-                             f"MITRE ATLAS {', '.join(a.atlas)}. The HF-Sentinel report has the rate, confidence "
-                             "interval and evidence hash."},
-            "properties": {"tags": tags, "security-severity": SECURITY_SEVERITY[worst[cid]], "precision": "high"}})
+            "properties": {"tags": tags, "security-severity": SECURITY_SEVERITY[worst[cid]], "precision": "high"}}
+        if rem:
+            # Actionable remediation on the alert itself: GitHub code scanning renders rule.help (markdown) and helpUri.
+            steps = "\n".join(f"- {s}" for s in rem["steps"])
+            rule["help"] = {"text": f"{help_text}\n\nRemediation ({rem['title']}, OWASP {rem['owasp']}):\n{steps}",
+                            "markdown": f"**{help_text}**\n\n**Remediation — {rem['title']} (OWASP {rem['owasp']})**\n\n"
+                                        f"{rem['summary']}\n\n{steps}"}
+            rule["helpUri"] = rem["reference"]
+        else:
+            rule["help"] = {"text": help_text}
+        rules.append(rule)
     results = []
     for f in report.findings:
         lo, hi = f.asr_ci95

@@ -213,6 +213,11 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 .proof .tx{font-family:var(--mono);font-size:10.5px;padding:3px 7px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--ink-3)}
 .proof .repro{font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--ink-2)}
 .proof .repro .rk{color:var(--ink-3)}
+.proof .remsum{margin:0 0 7px;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.proof .remsteps{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.proof .remsteps li{font-size:12.5px;line-height:1.5;color:var(--ink-1)}
+.proof .remref{display:inline-block;margin-top:8px;font-size:11.5px;color:var(--accent);text-decoration:none;font-weight:600}
+.proof .remref:hover{text-decoration:underline}
 
 /* ---- history ---- */
 .statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
@@ -468,6 +473,7 @@ $('#themeBtn').onclick=()=>{ const dark = theme? theme==='dark' : matchMedia('(p
 const CATS=[
   {id:'A',name:'Injection & exfiltration'},{id:'B',name:'Adaptive attacks'},
   {id:'C',name:'Secret leakage'},{id:'E',name:'Insecure output & code'}];
+const REMED={};   // category letter → remediation {title,owasp,summary,steps,reference}, populated from /catalog
 const TECHNIQUES=[
   {id:'A1',cat:'A',name:'Direct prompt injection',desc:'instruction override'},
   {id:'A3',cat:'A',name:'Hidden injection',desc:'Trojan-Source / byte-smuggling'},
@@ -711,7 +717,8 @@ async function loadCatalog(){ // replace the built-in demo catalog with the serv
   try{ const r=await fetch(API.base+'/catalog',{headers:{'X-API-Key':key}}); if(!r.ok) return; const c=await r.json();
     if(c.rule_packs){ PACKS.length=0; c.rule_packs.forEach(p=>PACKS.push(
       {id:p.id,name:p.name,desc:p.description,cats:p.categories,icon:({owasp:'list',inject:'bolt',exfil:'send',code:'code',full:'target'})[p.id]||'target'})); }
-    if(c.categories){ CATS.length=0; c.categories.forEach(x=>CATS.push({id:x.id,name:x.name})); }
+    if(c.categories){ CATS.length=0; c.categories.forEach(x=>{ CATS.push({id:x.id,name:x.name});
+      if(x.remediation) REMED[x.id]=x.remediation; }); }   // per-category remediation → shown in the finding drill-down
     if(c.techniques){ TECHNIQUES.length=0; c.techniques.forEach(t=>TECHNIQUES.push({id:t.id,cat:t.category,name:t.name,desc:t.status||''})); }
     if(c.profiles){ $('#profile').innerHTML=c.profiles.map(p=>`<option value="${p}">${p}</option>`).join(''); }
     renderPacks(); renderCats();
@@ -808,6 +815,13 @@ function findingProofHTML(f){
       +rk.map(([k,v])=>`<span class="rk">${esc(k)}=</span>${esc(v)}`).join('  ')+`</div></div>`); }
   if(taxo.length) parts.push(`<div><div class="pl">Mapping</div><div class="taxo">`
     +taxo.map(([k,v])=>`<span class="tx">${esc(k)} ${esc(v)}</span>`).join('')+`</div></div>`);
+  const rem = REMED[(f.catalog_id||'')[0]];   // remediation keyed by the finding's category letter (from /catalog)
+  if(rem){ const steps=(rem.steps||[]).map(s=>`<li>${esc(s)}</li>`).join('');
+    parts.push(`<div><div class="pl">Remediation${rem.owasp?' · OWASP '+esc(rem.owasp):''}</div>`
+      +(rem.summary?`<p class="remsum">${esc(rem.summary)}</p>`:'')
+      +(steps?`<ul class="remsteps">${steps}</ul>`:'')
+      +(rem.reference?`<a class="remref" href="${esc(rem.reference)}" target="_blank" rel="noopener noreferrer">OWASP LLM Top 10 ↗</a>`:'')
+      +`</div>`); }
   return `<div class="proof">${parts.join('')}</div>`;
 }
 /* One delegated toggle for every expandable finding, live card or history modal alike. */

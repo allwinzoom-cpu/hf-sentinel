@@ -56,7 +56,9 @@ class _Parser(HTMLParser):
                 self.found.append(Active("css-script", f"<{tag} style>"))
         if tag == "meta":
             a = {k.lower(): (v or "") for k, v in attrs if k}
-            if a.get("http-equiv", "").lower() == "refresh" and _script_url(a.get("content", "").split("url=", 1)[-1]):
+            # browsers honor `url=` case-insensitively (URL= / Url=), so split on it case-folded or an uppercase form evades
+            if a.get("http-equiv", "").lower() == "refresh" and _script_url(
+                    re.split(r"url=", a.get("content", ""), maxsplit=1, flags=re.IGNORECASE)[-1]):
                 self.found.append(Active("meta-refresh", "<meta refresh>"))
 
     handle_startendtag = handle_starttag

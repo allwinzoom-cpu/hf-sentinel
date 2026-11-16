@@ -25,6 +25,13 @@ from hfsentinel.report.remediation import for_catalog_id
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 SECURITY_SEVERITY = {"Critical": "9.5", "High": "8.0", "Medium": "5.5", "Low": "2.0", "Info": "0.5"}
 SARIF_LEVEL = {"Critical": "error", "High": "error", "Medium": "warning", "Low": "note", "Info": "note"}
+_SEV_ORDER = ("Critical", "High", "Medium", "Low", "Info")
+
+
+def _sev_rank(sev: str) -> int:
+    """Rank a severity (lower = more severe); an unknown/off-enum value (e.g. the schema's ``Unrated`` default) ranks
+    last so it never masks a real severity and never crashes a lookup."""
+    return _SEV_ORDER.index(sev) if sev in _SEV_ORDER else len(_SEV_ORDER)
 MAX_TAGS = 10
 _MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|~>])")
 # A restrictive CSP so the report is inert even if an escape were ever missed: no scripts, no images (defeats
@@ -82,22 +89,25 @@ def to_sarif(report: Report, *, anchor: str = "sentinel.yaml", catalog: Catalog 
     index = {cid: n for n, cid in enumerate(rule_ids)}
     worst, oracle_name = {}, {}
     for f in report.findings:
-        worst[f.catalog_id] = f.severity
+        if f.catalog_id not in worst or _sev_rank(f.severity) < _sev_rank(worst[f.catalog_id]):
+            worst[f.catalog_id] = f.severity  # keep the MOST severe when a catalog_id has multiple findings (not last)
         oracle_name[f.catalog_id] = f.oracle.name  # the neutral oracle that actually confirmed it (16.16)
     rules = []
     for cid in rule_ids:
         a = by_id[cid]
+        # The catalog name/oracle prose can name an upstream judge; scrub every field that embeds it (16.16, D-014).
+        name_s = _nd_scrub(a.name)
         tags = ["security", "llm", *a.owasp, *a.atlas][:MAX_TAGS]
         rem = for_catalog_id(cid)
-        help_text = (f"{a.name}: confirmed by a deterministic oracle. OWASP {', '.join(a.owasp)}; "
+        help_text = (f"{name_s}: confirmed by a deterministic oracle. OWASP {', '.join(a.owasp)}; "
                      f"MITRE ATLAS {', '.join(a.atlas)}. The HF-Sentinel report has the rate, confidence "
                      "interval and evidence hash.")
         rule = {
-            "id": f"hfsentinel/{cid}", "name": re.sub(r"[^A-Za-z0-9]+", "", a.name.title()) or cid,
-            "shortDescription": {"text": f"{cid} {a.name}"},
-            # The catalog's oracle prose can name upstream judges; report the neutral oracle that ran, scrubbed (16.16).
+            "id": f"hfsentinel/{cid}", "name": re.sub(r"[^A-Za-z0-9]+", "", name_s.title()) or cid,
+            "shortDescription": {"text": f"{cid} {name_s}"},
             "fullDescription": {"text": _nd_scrub(f"{a.name} (catalog {cid}). Success oracle: {oracle_name[cid]}.")},
-            "properties": {"tags": tags, "security-severity": SECURITY_SEVERITY[worst[cid]], "precision": "high"}}
+            "properties": {"tags": tags, "security-severity": SECURITY_SEVERITY.get(worst[cid], "0.5"),
+                           "precision": "high"}}
         if rem:
             # Actionable remediation on the alert itself: GitHub code scanning renders rule.help (markdown) and helpUri.
             steps = "\n".join(f"- {s}" for s in rem["steps"])
@@ -114,7 +124,7 @@ def to_sarif(report: Report, *, anchor: str = "sentinel.yaml", catalog: Catalog 
         stable = hashlib.sha256(f"{ref}\0{f.catalog_id}".encode()).hexdigest()
         results.append({
             "ruleId": f"hfsentinel/{f.catalog_id}", "ruleIndex": index[f.catalog_id],
-            "level": SARIF_LEVEL[f.severity],
+            "level": SARIF_LEVEL.get(f.severity, "note"),
             "message": {"text": _printable(
                 f"{f.technique}: {f.successes}/{f.trials} trials succeeded (ASR {f.asr:.0%}, 95% CI "
                 f"{lo:.0%}-{hi:.0%}) against {ref}. Severity {f.severity}.", 1000)},
@@ -176,7 +186,7 @@ def to_markdown(report: Report) -> str:
     names = {"A": "Prompt injection", "B": "Jailbreak / policy bypass", "C": "Information disclosure",
              "D": "Agentic & tool abuse", "E": "Output handling & resource abuse", "H": "Hallucination"}
     for c, v in g["categories"].items():
-        out.append(f"| {c} · {names[c]} | {'yes' if v['tested'] else 'not tested'} | "
+        out.append(f"| {c} · {names.get(c, c)} | {'yes' if v['tested'] else 'not tested'} | "
                    f"{'–' if v['score'] is None else v['score']} | {v['grade'] or '–'} | {v['findings']} |")
     out += ["", "## Findings (confirmed)", ""]
     if not report.findings:

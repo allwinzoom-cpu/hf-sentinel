@@ -222,8 +222,9 @@ def test_cli_scan_regression_gate(tmp_path):
     assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 2
 
 
-def test_cli_scan_regression_gate_needs_a_store(tmp_path):
-    # --fail-on-regression without --db cannot assess regression: it is skipped, never a hard failure
+def test_cli_scan_regression_gate_fails_closed_without_a_store(tmp_path):
+    # --fail-on-regression without --db cannot assess regression: a requested CI gate that cannot run must FAIL CLOSED
+    # (exit 11), never silently pass — a gate that greens when it could not run is worthless.
     srv, base = vuln_target.serve(profile="high", seed=6)
     uri = f"openai+{base}#{vuln_target.MODEL_ID}"
     try:
@@ -231,7 +232,8 @@ def test_cli_scan_regression_gate_needs_a_store(tmp_path):
                                            "--out", str(tmp_path / "rep"), "--fail-on-regression", "0.1"])
     finally:
         srv.shutdown()
-    assert "needs a scan store" in res.output and res.exit_code != cli.EXIT_REGRESSION, res.output
+    assert res.exit_code == cli.EXIT_REGRESSION, res.output
+    assert "could not be evaluated" in res.output and "needs a scan store" in res.output
 
 
 def test_sdk_scan_records_to_db(tmp_path):
@@ -359,6 +361,62 @@ def test_api_history_compare_endpoint(tmp_path):
     assert client.get("/history/R-base/compare", headers=h).json()["base"] is None   # earliest scan: no base
     assert client.get("/history/nope/compare", headers=h).status_code == 404
     assert client.get("/history/R-tgt/compare").status_code == 401                   # auth required
+
+
+def test_cli_history_compare_trend_export(tmp_path):
+    import copy
+    import os as _os
+    import stat as _stat
+    db = tmp_path / "scans.db"
+    # two slim scans of one target (compare/trend read only stored coverage, so the slim REPORT fixture suffices)
+    r1 = copy.deepcopy(REPORT); r1["run"]["run_id"] = "R-early"; r1["run"]["started_at"] = "2026-01-01T00:00:00+00:00"
+    for t in r1["techniques"]:
+        if t["catalog_id"] == "C2":
+            t["asr"] = 0.4
+    r2 = copy.deepcopy(REPORT); r2["run"]["run_id"] = "R-late"; r2["run"]["started_at"] = "2026-03-01T00:00:00+00:00"
+    store.record_scan(db, r1); store.record_scan(db, r2)
+    run = CliRunner()
+
+    rt = run.invoke(cli.app, ["history", "--db", str(db), "--trend", "openai+http://x#m"])
+    assert rt.exit_code == 0, rt.output
+    assert "2026-01-01" in rt.output and "2026-03-01" in rt.output and "behavioural" in rt.output  # oldest→newest
+
+    rc = run.invoke(cli.app, ["history", "--db", str(db), "--compare", "R-late"])
+    assert rc.exit_code == 0 and "overall" in rc.output and "LSCAN-003/009" in rc.output
+    assert run.invoke(cli.app, ["history", "--db", str(db), "--compare", "nope"]).exit_code == cli.EXIT_INPUT
+
+    # JSON re-export works off any stored report dict; to a dir it writes an owner-only (0600) file
+    rj = run.invoke(cli.app, ["history", "--db", str(db), "--export", "R-late", "--format", "json"])
+    assert rj.exit_code == 0 and '"run_id": "R-late"' in rj.output
+    out = tmp_path / "exp"
+    rw = run.invoke(cli.app, ["history", "--db", str(db), "--export", "R-late", "--format", "json", "--out", str(out)])
+    assert rw.exit_code == 0 and "wrote" in rw.output
+    f = next(out.iterdir())
+    assert _stat.S_IMODE(_os.stat(f).st_mode) == 0o600            # evidence excerpts → owner-only on disk
+    assert run.invoke(cli.app, ["history", "--db", str(db), "--export", "nope"]).exit_code == cli.EXIT_INPUT
+
+    # SARIF/MD/HTML re-export needs a FULL report; store one real assembled report and render each format
+    import datetime as dt
+
+    from hfsentinel.controls import resolve_controls
+    from hfsentinel.engines.planner import build_plan
+    from hfsentinel.engines.sweep import NATIVE
+    from hfsentinel.report.build import assemble
+    from hfsentinel.targets.resolve import parse
+    uri = "openai+http://127.0.0.1:9/#m"
+    controls = resolve_controls({"trials": 2}).controls
+    plan = build_plan(parse(uri), controls=controls)
+    rep = assemble(target={"ref": uri, "kind": "openai", "resolved_model": "m"}, plan_steps=plan.steps, runs={},
+                   controls=controls, controls_sha256="0" * 64,
+                   attestation={"source": "loopback", "matched": "127.0.0.1", "reference": "loopback",
+                                "authorized_by": "operator", "checked_at": "2026-11-16T00:00:00+00:00"}, recon=None,
+                   ledger={"requests": 0, "errors": 0, "cost_priced_usd": 0.0}, run_id="R-real", native=set(NATIVE),
+                   started=dt.datetime(2026, 3, 2, tzinfo=dt.timezone.utc))
+    store.record_scan(db, rep)
+    for fmt in ("sarif", "md", "html"):
+        rf = run.invoke(cli.app, ["history", "--db", str(db), "--export", "R-real", "--format", fmt])
+        assert rf.exit_code == 0 and len(rf.output) > 80, (fmt, rf.exit_code, rf.output[:200])
+    assert run.invoke(cli.app, ["history", "--db", str(db), "--export", "R-real", "--format", "xml"]).exit_code == cli.EXIT_USAGE
 
 
 def test_scan_trend_is_an_ordered_per_target_asr_series(tmp_path):

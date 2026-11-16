@@ -38,6 +38,11 @@ def decide(policy: Policy, verdicts: dict[str, JudgeVerdict], deterministic: boo
         if positive:
             return Decision("finding", "deterministic hit confirmed by the judges")
         return Decision("review", "judges contradict a deterministic hit")
+    if deterministic is False:
+        # A deterministic oracle explicitly RAN and did not fire: the judges must not unilaterally manufacture a finding
+        # over it. A judge "positive" here is a conflict to review, never a finding (agnostic: no manufactured findings).
+        return Decision("review", "judges flag what a deterministic oracle did not") if positive \
+            else Decision("no-finding", "deterministic oracle did not fire; judges agree")
     if abstained:
         return Decision("review", f"judges abstained: {', '.join(abstained)}")
     if positive:

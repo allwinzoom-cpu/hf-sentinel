@@ -22,7 +22,8 @@ hfsentinel serve --db scans.db           # console at http://127.0.0.1:8000/  (-
 ```
 
 The console — a launch panel (rule packs, categories, profile, knobs), a **live streamed run**, and a history dashboard
-with per-scan **drill-down** — drives the same API, same-origin:
+with per-scan **drill-down** and **regression comparison** (a scan vs. the previous scan of the same target) — drives the
+same API, same-origin:
 
 - `GET /` — the console (static) · `GET /catalog` — profiles, categories, techniques, rule packs (the UI's options)
 - `POST /scans` — queue a scan; returns `job_id` + a per-job `stream_token` · `GET /scans/{id}` — status / final report
@@ -33,6 +34,10 @@ with per-scan **drill-down** — drives the same API, same-origin:
 - `GET /scans/{id}/events` — Server-Sent Events (live progress), authenticated by the stream token, so the API key
   never appears in a URL or access log
 - `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, confirmed findings
+- `GET /history/{run_id}/compare` — **regression**: the behavioural attack-success delta vs. the most recent earlier
+  scan of the same target (per-category ΔASR, grade change, findings new/resolved/persistent). The console shows it atop
+  the drill-down. Observed delta only (LSCAN-003) — never an alignment-removal claim, and the serving path is not
+  asserted identical (LSCAN-009)
 
 Auth is a constant-time API key (`Authorization: Bearer` or `X-API-Key`), per-key rate-limited; every response carries
 browser-hardening headers (`nosniff`, `frame-ancestors 'none'`, `no-referrer`). The authorized scope is server-side — a

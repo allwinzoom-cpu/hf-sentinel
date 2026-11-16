@@ -691,19 +691,45 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
             typer.echo(f"adaptive   B7 multi-turn: attacker LLM '{cli}' refines toward the canary objective (host-only)")
         else:
             typer.echo(f"adaptive   B7 deferred: attacker CLI '{cli}' not on PATH (use claude|codex)")
-    result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
-                          max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
-                          seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
-                          library=library, controls=c, keep_transcripts=c.output.save_transcripts,
-                          reference_set=reference_set, halluc_ecosystems=halluc_ecosystems,
-                          api_reference=api_reference, check_citations=check_citations,
-                          check_sycophancy=check_sycophancy, check_calibration=check_calibration,
-                          nli_scorer=nli_scorer, check_abliteration=check_abliteration,
-                          check_triggered=check_triggered, check_obfuscation=check_obfuscation,
-                          check_evolution=check_evolution, check_minimization=check_minimization,
-                          extended=extended,
-                          panel=jb_panel, jailbreak_goals=jb_goals, adaptive_attacker=adaptive_attacker,
-                          progress=progress)
+    # Graceful Ctrl-C: the first SIGINT asks the campaign to stop at its next technique/stage boundary and finalize a
+    # *partial* report (no traffic lost, nothing aborted mid-stage); a second Ctrl-C restores the default hard interrupt.
+    import signal as _signal
+    import threading as _threading
+    _stop = _threading.Event()
+
+    def _on_sigint(_sig, _frame):
+        if _stop.is_set():                                     # second Ctrl-C: give up gracefully, hard-stop
+            _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+            raise KeyboardInterrupt
+        _stop.set()
+        typer.echo("\ncampaign  cancellation requested (Ctrl-C) — finalizing a partial report; Ctrl-C again to abort",
+                   err=True)
+    _prev_sigint = _signal.getsignal(_signal.SIGINT)
+    try:
+        _signal.signal(_signal.SIGINT, _on_sigint)
+    except (ValueError, OSError):                              # not on the main thread (e.g. test harness): skip the trap
+        _prev_sigint = None
+    try:
+        result = run_campaign(target, gov, plan, trials=c.target_io.trials, temperature=c.target_io.temperature,
+                              max_tokens=c.target_io.max_tokens, concurrency=c.target_io.concurrency,
+                              seed=c.target_io.seed, sink_host=sink_host, system_one=s1, profile=profile,
+                              library=library, controls=c, keep_transcripts=c.output.save_transcripts,
+                              reference_set=reference_set, halluc_ecosystems=halluc_ecosystems,
+                              api_reference=api_reference, check_citations=check_citations,
+                              check_sycophancy=check_sycophancy, check_calibration=check_calibration,
+                              nli_scorer=nli_scorer, check_abliteration=check_abliteration,
+                              check_triggered=check_triggered, check_obfuscation=check_obfuscation,
+                              check_evolution=check_evolution, check_minimization=check_minimization,
+                              extended=extended,
+                              panel=jb_panel, jailbreak_goals=jb_goals, adaptive_attacker=adaptive_attacker,
+                              progress=progress, cancel=_stop.is_set)
+    finally:
+        if _prev_sigint is not None:
+            _signal.signal(_signal.SIGINT, _prev_sigint)
+    if getattr(result, "cancelled", False):
+        typer.echo("campaign  CANCELLED — partial report (not all stages ran)")
+        if _emit:
+            _emit("scan_cancelled", run_id=run_id)
     saved = result.exhaustive_requests - result.requests
     pct = round(100 * saved / result.exhaustive_requests) if result.exhaustive_requests else 0
     typer.echo(f"campaign  {result.requests} attack requests vs {result.exhaustive_requests} exhaustive "

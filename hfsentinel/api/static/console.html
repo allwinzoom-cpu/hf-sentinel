@@ -326,7 +326,13 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
             <div class="t" id="runTarget">—</div>
             <span class="statuspill" id="runStatus"><span class="pulse"></span><span id="runStatusText">idle</span></span>
           </div>
-          <div style="text-align:right;color:var(--ink-3);font-size:12px" class="mono"><span id="runId">—</span></div>
+          <div style="text-align:right;color:var(--ink-3);font-size:12px" class="mono">
+            <span id="runId">—</span>
+            <div><button class="icbtn" id="stopBtn" title="Stop scan" aria-label="Stop scan" hidden
+                        style="width:auto;padding:0 12px;margin-top:8px;gap:7px;color:var(--crit);border-color:var(--crit)">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              Stop</button></div>
+          </div>
         </div>
         <div class="progress"><i id="bar"></i></div>
         <div class="kpis">
@@ -500,6 +506,7 @@ function initRun(req){
   setGrade('·'); $('#grade').className='gradeorb'; $('#grade').firstChild.textContent='·';
   $('#findings').innerHTML='<p class="hint">Confirmed findings appear here as the oracle verifies them.</p>';
   $('#log').innerHTML=''; renderTechs();
+  liveJob=null; const sb=$('#stopBtn'); if(sb) sb.hidden=true;  // demo runs aren't cancellable; runLive re-enables it
   const notRun=TECHNIQUES.filter(t=>t.cat==='B'&&sel.cats.has('B')).length;
   $('#coverNote').textContent = run.total+' techniques · profile '+req.profile;
   setStatus('running','scanning'); logLine('scan','start','started · '+run.total+' techniques · profile='+req.profile);
@@ -563,6 +570,7 @@ function finishDemo(){ setStatus('done','completed'); $('#bar').style.width='100
   saveHistory(); }
 
 /* ---------- real API path (same UI, live SSE) ---------- */
+let liveJob=null;  // {id, base, key} for the scan currently streaming — the Stop button acts on this
 async function runLive(req,base,key){
   initRun(req);
   const h={'Content-Type':'application/json'}; if(key) h['X-API-Key']=key;
@@ -571,11 +579,20 @@ async function runLive(req,base,key){
     if(!r.ok) throw new Error('HTTP '+r.status); job=await r.json(); }
   catch(e){ logLine('error','find','could not reach API ('+e.message+') — falling back to demo'); return runDemo(req); }
   $('#runId').textContent=job.job_id||'job';
+  liveJob={id:job.job_id,base:base,key:key}; showStop(true);  // a real scan can be stopped; the demo cannot
   // the server returns the events URL carrying a per-job stream token (not the API key); use it verbatim
   const es=new EventSource(base+job.events);
   es.onmessage=ev=>{ let d; try{d=JSON.parse(ev.data)}catch(e){return}
-    handleEvent(d); if(d.type==='scan_closed'){ es.close(); finishLive(job.job_id,base,key); } };
-  es.onerror=()=>{ es.close(); logLine('info','info','event stream closed'); };
+    handleEvent(d); if(d.type==='scan_closed'){ es.close(); showStop(false); finishLive(job.job_id,base,key); } };
+  es.onerror=()=>{ es.close(); showStop(false); logLine('info','info','event stream closed'); };
+}
+function showStop(on){ const b=$('#stopBtn'); if(!b) return; b.hidden=!on; if(on) b.disabled=false; }
+async function stopLive(){
+  if(!liveJob) return; const b=$('#stopBtn'); if(b) b.disabled=true;   // one click; the server is idempotent anyway
+  setStatus('running','cancelling'); logLine('scan','info','cancellation requested — stopping at the next stage boundary');
+  try{ const h=liveJob.key?{'X-API-Key':liveJob.key}:{};
+    await fetch(liveJob.base+'/scans/'+liveJob.id,{method:'DELETE',headers:h}); }
+  catch(e){ logLine('error','find','could not reach API to cancel ('+e.message+')'); if(b) b.disabled=false; }
 }
 async function finishLive(jobId,base,key){ /* pull the completed report for findings with severity + refresh history */
   try{ const h=key?{'X-API-Key':key}:{}; const r=await fetch(base+'/scans/'+jobId,{headers:h});
@@ -599,9 +616,10 @@ function handleEvent(d){ /* bridges the server event stream → the same rendere
   else if(d.type==='decision'){ // every stage logs decisions → full kill-chain visibility, not just the breadth sweep
     setStatus('running', d.stage?('stage '+d.stage):'scanning');
     logLine(d.stage||'·','info',(d.catalog_id&&d.catalog_id!=='*'?d.catalog_id+' · ':'')+(d.action||'')+(d.why?' — '+d.why:'')); }
-  else if(d.type==='scan_completed'){ setStatus('done','completed'); if(d.grade) setGrade(d.grade);
+  else if(d.type==='scan_completed'){ const cx=!!d.cancelled; setStatus(cx?'warn':'done',cx?'cancelled':'completed');
+    if(cx) logLine('scan','info','scan cancelled — partial report (not all stages ran)'); if(d.grade) setGrade(d.grade);
     if(d.requests!=null){$('#kReq').textContent=d.requests;} if(d.cost_usd!=null){$('#kCost').textContent=(+d.cost_usd).toFixed(2);} }
-  else if(d.type==='scan_closed'){ setStatus('done','completed'); }
+  else if(d.type==='scan_closed'){ const cx=d.status==='cancelled'; setStatus(cx?'warn':'done',cx?'cancelled':'completed'); showStop(false); }
 }
 
 /* ---------- live API detection + catalog ---------- */
@@ -641,6 +659,7 @@ $('#go').onclick=()=>{
   if(API.live && key) runLive(req,API.base,key); else runDemo(req);
 };
 $('#apikey').addEventListener('change',loadCatalog);
+$('#stopBtn').onclick=stopLive;
 
 /* ---------- history (sample + persisted) ---------- */
 const SAMPLE_HISTORY=[

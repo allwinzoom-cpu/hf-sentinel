@@ -104,7 +104,7 @@ class ScanRequest(BaseModel):
 @dataclass
 class Job:
     id: str
-    status: str                       # queued | running | completed | failed
+    status: str                       # queued | running | completed | failed | cancelled
     created: str
     target: str
     request: dict
@@ -114,12 +114,13 @@ class Job:
     finished: str | None = None
     stream_token: str = ""                               # capability to read this job's event stream (not the API key)
     events: Any = field(default=None, repr=False)        # queue.Queue of progress events; drained by the SSE endpoint
+    cancel_event: Any = field(default=None, repr=False)  # threading.Event; set by DELETE, polled by the campaign
 
     def public(self) -> dict:
         """JSON-safe view. On failure, a redacted reason + kind; never an internal traceback."""
         out: dict[str, Any] = {"job_id": self.id, "status": self.status, "created": self.created,
                                "target": self.target}
-        if self.status == "completed":
+        if self.status in ("completed", "cancelled"):   # a cancelled scan still carries its partial report
             out["result"] = self.result
         if self.status == "failed":
             out["error"] = self.error
@@ -141,6 +142,7 @@ class JobStore:
         job = Job(id=uuid.uuid4().hex, status="queued", created=_now(), target=target, request=request,
                   stream_token=secrets.token_urlsafe(24))
         job.events = queue.Queue(maxsize=10000)
+        job.cancel_event = threading.Event()
         with self._lock:
             self._jobs[job.id] = job
             self._order.append(job.id)
@@ -239,11 +241,14 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     def _run(job_id: str, target: str, kwargs: dict) -> None:
         job = store.get(job_id)
         events = job.events if job else None
+        cancel = job.cancel_event.is_set if job and job.cancel_event else None
         store.update(job_id, status="running")
         try:
             result = sdk.scan(target, scope_file=scope_file, signers_file=signers_file, db_path=db_path,
-                              progress=(events.put if events else None), **kwargs)
-            store.update(job_id, status="completed", result=result.to_dict(), finished=_now())
+                              progress=(events.put if events else None), cancel=cancel, **kwargs)
+            # A cancelled scan returns a partial report; mark it so the operator can tell it from a full run.
+            status = "cancelled" if getattr(result, "cancelled", False) else "completed"
+            store.update(job_id, status=status, result=result.to_dict(), finished=_now())
         except ScopeError as e:
             store.update(job_id, status="failed", error=str(e), error_kind="scope", finished=_now())
         except sdk.ScanError as e:
@@ -288,6 +293,20 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
             raise HTTPException(status_code=404, detail="unknown job id")
         return job.public()
 
+    @app.delete("/scans/{job_id}")
+    async def cancel_scan(job_id: str, _key: str = Depends(require_key)) -> dict:
+        """Request cancellation of a queued or running scan. Cooperative: the campaign stops at its next technique/stage
+        boundary and finalizes a partial report, so this returns ``cancelling`` and the job settles to ``cancelled``.
+        Already-terminal jobs are returned unchanged (idempotent)."""
+        job = store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job id")
+        if job.status in ("completed", "failed", "cancelled"):
+            return {"job_id": job.id, "status": job.status}       # terminal already: nothing to cancel
+        if job.cancel_event is not None:
+            job.cancel_event.set()
+        return {"job_id": job.id, "status": "cancelling"}
+
     @app.get("/scans/{job_id}/events")
     async def scan_events(job_id: str, token: str = Query(default="")):
         """Server-Sent Events for a running scan. Authenticated by the per-job stream token (constant-time compared), so
@@ -308,7 +327,7 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
                     ev = await asyncio.to_thread(job.events.get, True, 15.0)   # block a worker thread up to 15s per wait
                 except queue.Empty:
                     yield ": keep-alive\n\n"                                   # comment frame keeps the connection warm
-                    if job.status in ("completed", "failed") and job.events.empty():
+                    if job.status in ("completed", "failed", "cancelled") and job.events.empty():
                         break
                     continue
                 if ev.get("type") == "_end":

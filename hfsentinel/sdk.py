@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,7 @@ class ScanResult:
     decisions: list               # campaign decisions log (incl. advisory/N-A extended-stage verdicts)
     recon: dict
     started: dt.datetime
+    cancelled: bool = False       # True when the operator cancelled: the report is a partial (not all stages ran)
 
     @property
     def confirmed(self) -> int:
@@ -154,6 +156,7 @@ def scan(target: str, *,
          negotiate_features: bool = False,
          db_path: str | None = None,
          progress: ProgressCallback | None = None,
+         cancel: Callable[[], bool] | None = None,
          controls_config: dict | None = None) -> ScanResult:
     """Run a full scan and return a :class:`ScanResult`.
 
@@ -232,6 +235,11 @@ def scan(target: str, *,
     if progress is not None and "on_decision" in accepted:
         optional_flags["on_decision"] = _on_decision
 
+    # Cooperative cancellation: the campaign checks `cancel()` at each technique/stage boundary and finalizes a partial
+    # report. Version-tolerant — only forwarded if the installed run_campaign accepts it.
+    if cancel is not None and "cancel" in accepted:
+        optional_flags["cancel"] = cancel
+
     result = run_campaign(target_client, gov, plan, trials=controls.target_io.trials,
                           temperature=controls.target_io.temperature, max_tokens=controls.target_io.max_tokens,
                           concurrency=controls.target_io.concurrency, seed=controls.target_io.seed,
@@ -256,13 +264,15 @@ def scan(target: str, *,
             store.record_scan(db_path, report_doc)
 
     final = gov.ledger.snapshot()
+    cancelled = bool(getattr(result, "cancelled", False))
     grade = report_doc.grade.get("overall") if isinstance(report_doc.grade, dict) else report_doc.grade.overall
-    emit(progress, "scan_completed", run_id=run_id, grade=grade,
+    emit(progress, "scan_completed", run_id=run_id, grade=grade, cancelled=cancelled,
          confirmed=len(report_doc.findings), requests=final.get("requests"),
          cost_usd=round(gov.ledger.spent_usd, 6))
 
     return ScanResult(run_id=run_id, target=target, report=report_doc, findings=list(report_doc.findings),
-                      grade=report_doc.grade, decisions=result.decisions, recon=recon, started=started)
+                      grade=report_doc.grade, decisions=result.decisions, recon=recon, started=started,
+                      cancelled=cancelled)
 
 
 def run_campaign_from_controls(*args, **kwargs):  # pragma: no cover - thin compatibility alias

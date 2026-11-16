@@ -933,7 +933,10 @@ def serve(host: Annotated[str, typer.Option(help="Bind address.")] = "127.0.0.1"
           signers: Annotated[Path | None, typer.Option(help="OpenSSH allowed_signers trusted to sign scope files.")]
           = None,
           db: Annotated[Path | None, typer.Option("--db", help="Scan-event store (defaults to $HFSENTINEL_DB).")] = None,
-          rate_per_min: Annotated[int, typer.Option(help="Per-key request rate limit.")] = 30) -> None:
+          rate_per_min: Annotated[int, typer.Option(help="Per-key request rate limit.")] = 30,
+          max_concurrent: Annotated[int, typer.Option(help="Scans run in parallel on the worker pool.")] = 2,
+          max_active: Annotated[int | None, typer.Option(help="Queued+running scan cap; past it the API returns 429 "
+                                                         "(default: 8× workers).")] = None) -> None:
     """Launch the API + operator console and print its URL, so scans can be run from the browser. Requires the api extra
     (`pip install 'hfsentinel[api]'`). API keys come from $HFSENTINEL_API_KEYS (comma-separated); with none set, scan
     routes refuse by design (deny-by-default). The authorized scope is server-side — a client can never choose a target."""
@@ -946,7 +949,8 @@ def serve(host: Annotated[str, typer.Option(help="Bind address.")] = "127.0.0.1"
         raise _fail("uvicorn is not installed — pip install 'hfsentinel[api]'", EXIT_UNSUPPORTED)
     service = create_app(scope_file=str(scope) if scope else None,
                          signers_file=str(signers) if signers else None,
-                         db_path=str(db) if db else None, rate_per_min=rate_per_min)
+                         db_path=str(db) if db else None, rate_per_min=rate_per_min,
+                         max_concurrent=max_concurrent, max_active_jobs=max_active)
     typer.echo(f"console   http://{host}:{port}/")
     typer.echo("api       /healthz · /catalog · /scans (POST) · /scans/{id}/events (SSE) · /history")
     if not os.environ.get("HFSENTINEL_API_KEYS"):

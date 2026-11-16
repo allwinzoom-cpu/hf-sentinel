@@ -116,6 +116,35 @@ def test_js_client_side_sinks_in_fenced_blocks():
     assert code_sinks.cwes(js('el.innerHTML = DOMPurify.sanitize(dirty)')) == set()
 
 
+def test_regex_fallback_ignores_sinks_in_comments():
+    # A sink that only appears in a comment never executes — flagging it is a false positive. This hardens the regex
+    # fallback (JS / unparsable code) only; the Python AST path is already comment-immune.
+    js = lambda b: f"```javascript\n{b}\n```"
+    # commented-out sinks: no finding
+    assert code_sinks.cwes(js('// eval(userInput)')) == set()
+    assert code_sinks.cwes(js('/* document.write(`<p>${x}</p>`) */')) == set()
+    assert code_sinks.cwes(js('const x = 1; // child_process.exec(`rm ${f}`)')) == set()
+    # the same sinks in real code still fire (the comment masking must not weaken true positives)
+    assert code_sinks.cwes(js('eval(userInput)')) == {"CWE-95"}
+    assert code_sinks.cwes(js('document.write(`<p>${x}</p>`)')) == {"CWE-79"}
+    # a // that is actually inside a string is NOT a comment, so a trailing real sink still matches
+    assert code_sinks.cwes(js('const u = "http://x"; eval(userInput)')) == {"CWE-95"}
+
+
+def test_regex_fallback_comment_masking_is_language_aware():
+    # Python `//` is floor division, not a comment: a sink after one must still be found (fallback runs on unparsable code).
+    py = "def f(:\n    y = a // b\n    pickle.loads(data)\n"      # deliberately unparsable → regex fallback
+    assert "CWE-502" in code_sinks.cwes(py)
+    # a Python `#` comment is masked, so a sink only in the comment does not fire, but real code on the line does
+    assert code_sinks.cwes("def f(:\n    x=1  # pickle.loads(data)\n") == set()
+    assert "CWE-502" in code_sinks.cwes("def f(:\n    pickle.loads(data)  # load the model\n")
+
+
+def test_credentials_in_comments_are_still_flagged():
+    # Secrets are literals, not structure: a key pasted into a comment IS the finding, so credential rules scan raw text.
+    assert "CWE-798" in code_sinks.cwes("```javascript\n// AKIAIOSFODNN7EXAMPLE is the key\n```")
+
+
 def test_ml_deserialization_vs_safe_loaders():
     # ML (un)pickling runs arbitrary code; the safe-mode kwargs and safetensors are not flagged
     assert code_sinks.cwes("import torch\ntorch.load(p)\n") == {"CWE-502"}

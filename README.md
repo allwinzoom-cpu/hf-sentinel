@@ -27,7 +27,9 @@ same API, same-origin. Every confirmed finding (live card or history drill-down)
 evidence excerpt the oracle matched, the statistical confidence (ASR with 95% CI, the baseline ASR and the **lift** over
 it — so the conservative confirm gate is visible, not implicit), the oracle and OWASP/ATLAS mapping, and the reproduction
 recipe (seed, trials, temperature, mutators) on live runs. The excerpt is the already-redacted ≤200-char proof (D-015),
-never raw traffic.
+never raw traffic. Each finding also carries **remediation** — OWASP-LLM-Top-10-grounded, defender-side mitigation steps
+for its category — shown in the drill-down and written onto the SARIF alert (`rule.help` + `helpUri`), so GitHub code
+scanning renders *what to do about it*, not just what broke.
 
 - `GET /` — the console (static) · `GET /catalog` — profiles, categories, techniques, rule packs (the UI's options)
 - `POST /scans` — queue a scan; returns `job_id` + a per-job `stream_token` · `GET /scans/{id}` — status / final report

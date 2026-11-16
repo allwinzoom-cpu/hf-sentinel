@@ -432,11 +432,12 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     @app.get("/catalog")
     async def catalog(_key: str = Depends(require_key)) -> dict:
         """What the UI renders selectable options from: profiles, categories (+names), every technique, and rule packs."""
+        from hfsentinel.report.remediation import for_category
         cat = load_catalog()
         attacks = list(cat.by_id().values())
         cats = sorted({a.category for a in attacks})
         return {"profiles": list(PROFILES),
-                "categories": [{"id": c, "name": CATEGORY_NAMES.get(c, c)} for c in cats],
+                "categories": [{"id": c, "name": CATEGORY_NAMES.get(c, c), "remediation": for_category(c)} for c in cats],
                 "techniques": [{"id": a.id, "category": a.category, "name": a.name, "status": a.status}
                                for a in attacks],
                 "rule_packs": list(RULE_PACKS)}

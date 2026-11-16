@@ -53,6 +53,15 @@ jobs:
 A confirmed finding at or above `fail-on` makes the step exit non-zero, so the workflow (and a PR gate that requires it)
 fails; the SARIF still appears under **Security → Code scanning**.
 
+### Regression gate (scheduled runs with a persisted store)
+
+Beyond the per-run severity gate, the CLI can fail on a **regression** — a target becoming measurably more attackable
+than last time. On a runner that persists the scan store across runs (`hfsentinel scan … --db scans.db`, with the DB
+cached or on a self-hosted runner), add `--fail-on-regression 0.1` to exit **11** when this target's overall
+attack-success rose by ≥ 10 % vs. its previous stored scan. The delta is an *observed behavioural* signal
+(LSCAN-003/009) — not an alignment-removal claim, and the serving path is not asserted identical across runs. It is a
+CLI flag rather than an action input because it needs state the stateless PR action does not keep.
+
 ## Hosted / heavy-compute variant (HF Jobs)
 
 For targets that need GPU or a large local model, run the scan as a Hugging Face Job rather than on the GitHub runner,

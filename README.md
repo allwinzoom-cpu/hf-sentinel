@@ -64,7 +64,13 @@ Every scan (CLI, SDK, or service) can record to a SQLite event store and emit on
 hfsentinel scan <target> --scope scope.yaml --db scans.db --events   # record every scan + emit JSON events on stderr
 hfsentinel history --db scans.db [--run <id>]                         # list recent scans, or one scan's coverage+findings
 hfsentinel prune   --db scans.db --keep 1000                         # retention: keep the newest N, drop older scans
+hfsentinel scan <target> --db scans.db --fail-on-regression 0.1      # CI gate: exit 11 if attack-success rose ≥ 10% vs. last
 ```
+
+`--fail-on-regression F` turns the stored history into a **CI regression gate**: after recording the scan it compares
+the target's overall attack-success against its previous stored scan and exits **11** if it rose by ≥ `F` (0–1). Needs
+`--db` and a prior scan (the first scan of a target is skipped, never failed). Observed behavioural delta only
+(LSCAN-003/009) — the complement of the console's regression/trend views, for automation.
 
 Press `Ctrl-C` during a `hfsentinel scan` to cancel gracefully: the campaign stops at the next boundary and still writes a
 partial report (press it again to abort hard).

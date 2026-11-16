@@ -169,6 +169,70 @@ def scan_detail(db_path: str | Path, run_id: str) -> dict | None:
         conn.close()
 
 
+def _category_asr(coverage: list[dict]) -> dict[str, float]:
+    """Mean ASR across the run (scored) techniques in each category — the same per-category signal diff_reports uses,
+    computed here from the stored coverage rows so no full report is needed to compare two scans."""
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for c in coverage:
+        if c.get("disposition") == "run" and c.get("asr") is not None:
+            cat = c.get("category") or (c.get("catalog_id") or " ")[0]
+            sums[cat] = sums.get(cat, 0.0) + float(c["asr"])
+            counts[cat] = counts.get(cat, 0) + 1
+    return {cat: sums[cat] / counts[cat] for cat in counts}
+
+
+def scan_comparison(db_path: str | Path, run_id: str) -> dict | None:
+    """Compare a scan against the most recent EARLIER scan of the same target: per-category ΔASR, overall ΔASR, the
+    grade change, and which confirmed findings are new / resolved / still present (keyed by catalog_id). This is an
+    *observed behavioural* attackability delta (LSCAN-003) — never an alignment-removal or training-history claim, and
+    the store does not record the serving path per technique, so it is not asserted that both runs hit the same route
+    (LSCAN-009). Returns None if the run is unknown, or ``{"base": None}`` if there is no earlier scan to compare to."""
+    conn = connect(db_path)
+    try:
+        cur = conn.execute("SELECT run_id, started, target_ref, grade, confirmed FROM scans WHERE run_id=?",
+                           (run_id,)).fetchone()
+        if cur is None:
+            return None
+        base = conn.execute(
+            "SELECT run_id, started, grade, confirmed FROM scans WHERE target_ref=? AND started < ? AND run_id != ? "
+            "ORDER BY started DESC LIMIT 1", (cur["target_ref"], cur["started"], run_id)).fetchone()
+        if base is None:
+            return {"target_ref": cur["target_ref"], "base": None}
+
+        def _cov(rid: str) -> list[dict]:
+            return [dict(r) for r in conn.execute(
+                "SELECT catalog_id, category, disposition, asr FROM coverage WHERE run_id=?", (rid,)).fetchall()]
+
+        def _finds(rid: str) -> dict[str, dict]:
+            return {r["catalog_id"]: dict(r) for r in conn.execute(
+                "SELECT catalog_id, severity, technique, asr FROM findings WHERE run_id=?", (rid,)).fetchall()}
+
+        tgt_cat, bse_cat = _category_asr(_cov(run_id)), _category_asr(_cov(base["run_id"]))
+        rows = [{"category": c, "target_asr": round(tgt_cat.get(c, 0.0), 4), "base_asr": round(bse_cat.get(c, 0.0), 4),
+                 "delta_asr": round(tgt_cat.get(c, 0.0) - bse_cat.get(c, 0.0), 4)}
+                for c in sorted(set(tgt_cat) | set(bse_cat))]
+        tf, bf = _finds(run_id), _finds(base["run_id"])
+        new = [tf[k] for k in tf if k not in bf]
+        resolved = [bf[k] for k in bf if k not in tf]
+        persistent = [tf[k] for k in tf if k in bf]
+        return {
+            "target_ref": cur["target_ref"],
+            "target": {"run_id": cur["run_id"], "started": cur["started"], "grade": cur["grade"],
+                       "confirmed": cur["confirmed"]},
+            "base": {"run_id": base["run_id"], "started": base["started"], "grade": base["grade"],
+                     "confirmed": base["confirmed"]},
+            "categories": rows,
+            "overall_delta_asr": round(sum(r["delta_asr"] for r in rows) / len(rows), 4) if rows else 0.0,
+            "findings_new": new, "findings_resolved": resolved, "findings_persistent": persistent,
+            # behavioural only; same serving path is not verified from the store (LSCAN-009)
+            "behavioural_note": "Observed attack-success delta between two scans of this target reference; not an "
+                                "alignment-removal claim, and the serving path is not verified identical.",
+        }
+    finally:
+        conn.close()
+
+
 def prune(db_path: str | Path, *, keep: int = 1000) -> int:
     """Retention: keep only the ``keep`` most recent scans (by ``started``); delete older scans and their coverage +
     findings. Returns how many scans were removed. A long-running service records every scan, so a deployment runs this

@@ -453,6 +453,16 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
             raise HTTPException(status_code=404, detail="unknown run id")
         return detail
 
+    @app.get("/history/{run_id}/compare")
+    async def history_compare(run_id: str, _key: str = Depends(require_key)) -> dict:
+        """Behavioural attackability delta vs. the most recent earlier scan of the same target (LSCAN-003/009)."""
+        if not db_path:
+            raise HTTPException(status_code=503, detail="no scan store configured on the server")
+        cmp = scanstore.scan_comparison(db_path, run_id)
+        if cmp is None:
+            raise HTTPException(status_code=404, detail="unknown run id")
+        return cmp
+
     app.state.job_store = store          # exposed for tests / introspection
     app.state.rate_limiter = limiter
     app.state.max_active_jobs = max_active

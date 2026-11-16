@@ -137,6 +137,10 @@ class JobStore:
         self._order: list[str] = []
         self._lock = threading.Lock()
         self._max = max_jobs
+        self._active = 0   # queued + running jobs (admission control); decremented once, on the terminal transition
+
+    # Terminal states hold a finished report (or a failure reason); a job settles into exactly one of them.
+    TERMINAL = ("completed", "failed", "cancelled")
 
     def create(self, target: str, request: dict) -> Job:
         job = Job(id=uuid.uuid4().hex, status="queued", created=_now(), target=target, request=request,
@@ -146,21 +150,36 @@ class JobStore:
         with self._lock:
             self._jobs[job.id] = job
             self._order.append(job.id)
+            self._active += 1
+            # Evicting a record does not stop its thread, so never evict a non-terminal job: drop only the oldest
+            # already-finished record. The active counter (not the record count) is what bounds in-flight work.
             while len(self._order) > self._max:
-                self._jobs.pop(self._order.pop(0), None)
+                victim = next((jid for jid in self._order
+                               if (j := self._jobs.get(jid)) and j.status in self.TERMINAL), None)
+                if victim is None:
+                    break   # everything retained is still in flight; keep it rather than orphan a running scan
+                self._order.remove(victim)
+                self._jobs.pop(victim, None)
         return job
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def active(self) -> int:
+        with self._lock:
+            return self._active
+
     def update(self, job_id: str, **fields: Any) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 return
+            was_terminal = job.status in self.TERMINAL
             for key, value in fields.items():
                 setattr(job, key, value)
+            if not was_terminal and job.status in self.TERMINAL:   # count each job down exactly once, on settling
+                self._active = max(0, self._active - 1)
 
 
 class RateLimiter:
@@ -200,13 +219,19 @@ def _present_key(authorization: str | None, x_api_key: str | None) -> str | None
 
 def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = None,
                signers_file: str | None = None, rate_per_min: int = DEFAULT_RATE_PER_MIN,
-               max_concurrent: int = 2, max_jobs: int = 1000, db_path: str | None = None):
+               max_concurrent: int = 2, max_jobs: int = 1000, max_active_jobs: int | None = None,
+               db_path: str | None = None):
     """Build the FastAPI app. `scope_file`/`signers_file` set the server-side authorized scope (deny-by-default without
     one); `api_keys` (or ``HFSENTINEL_API_KEYS``) are the accepted keys. `db_path` (or ``HFSENTINEL_DB``) records every
-    scan to a SQLite store, server-side only. Raises RuntimeError if FastAPI is not installed."""
+    scan to a SQLite store, server-side only. `max_active_jobs` bounds queued+running scans (admission control): past it
+    the service sheds load with 429 + Retry-After instead of queuing unbounded traffic to targets. Raises RuntimeError
+    if FastAPI is not installed."""
     if not FASTAPI_AVAILABLE:
         raise RuntimeError("FastAPI is not installed; install the optional extra: pip install 'hfsentinel[api]'")
     keys = load_api_keys(api_keys)
+    # Default backlog: a few waves of work over the worker pool, so a burst is absorbed but a client cannot queue
+    # thousands of long scans that would all eventually reach out to targets.
+    max_active = max_active_jobs if max_active_jobs is not None else max(8, max(1, max_concurrent) * 8)
     db_path = db_path or os.environ.get("HFSENTINEL_DB")  # server-configured; a client can never choose where we persist
     store = JobStore(max_jobs=max_jobs)
     limiter = RateLimiter(rate_per_min)
@@ -279,6 +304,11 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
 
     @app.post("/scans", status_code=202)
     async def submit_scan(req: ScanRequest, _key: str = Depends(require_key)) -> dict:
+        # Admission control: scans are long and the worker pool is small, so shed load past the backlog bound instead of
+        # queuing unbounded work (each queued scan would otherwise eventually send traffic to a target). 429 + Retry-After.
+        if store.active() >= max_active:
+            raise HTTPException(status_code=429, detail="scan queue is full; retry shortly",
+                                headers={"Retry-After": "30"})
         job = store.create(req.target, req.model_dump())
         pool.submit(_run, job.id, req.target, req.scan_kwargs())
         # The events URL carries a per-job stream token, not the API key: EventSource cannot send headers, and this keeps
@@ -368,4 +398,5 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
 
     app.state.job_store = store          # exposed for tests / introspection
     app.state.rate_limiter = limiter
+    app.state.max_active_jobs = max_active
     return app

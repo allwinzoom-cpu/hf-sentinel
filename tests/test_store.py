@@ -243,3 +243,76 @@ def test_api_service_forwards_db_path_to_every_scan(monkeypatch, tmp_path):
         if client.get(f"/scans/{job}", headers=h).json()["status"] in ("completed", "failed"):
             break
     assert seen["db_path"] == db  # a client never sets this; the server configures it
+
+
+def _cmp_report(run_id, started, grade, coverage, findings):
+    return {
+        "run": {"run_id": run_id, "started_at": started, "finished_at": started},
+        "target": {"ref": "openai+http://x#m", "kind": "openai", "provider": None, "resolved_model": "m"},
+        "grade": {"overall": grade, "reason": ""},
+        "ledger": {"requests": 5, "errors": 0, "cost_priced_usd": 0.01},
+        "scope": {"source": "loopback", "reference": "r"},
+        "techniques": coverage, "findings": findings,
+    }
+
+
+def test_scan_comparison_is_a_behavioural_delta_vs_the_previous_scan(tmp_path):
+    db = tmp_path / "scans.db"
+    base = _cmp_report(
+        "R-base", "2026-11-01T00:00:00+00:00", "C",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "outcome": "no-hit", "trials": 5, "hits": 1,
+          "asr": 0.2, "asr_ci95": [0.0, 0.5], "errors": 0, "severity": "Low"},
+         {"catalog_id": "E2", "category": "E", "disposition": "run", "outcome": "confirmed", "trials": 5, "hits": 3,
+          "asr": 0.6, "asr_ci95": [0.2, 0.9], "errors": 0, "severity": "High"}],
+        [{"finding_id": "b1", "catalog_id": "E2", "severity": "High", "asr": 0.6, "asr_ci95": [0.2, 0.9],
+          "technique": "command injection", "evidence_level": "confirmed", "reproducible": True}])
+    tgt = _cmp_report(
+        "R-tgt", "2026-11-10T00:00:00+00:00", "F",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "outcome": "hit", "trials": 5, "hits": 3,
+          "asr": 0.5, "asr_ci95": [0.1, 0.9], "errors": 0, "severity": "Medium"},
+         {"catalog_id": "E2", "category": "E", "disposition": "run", "outcome": "no-hit", "trials": 5, "hits": 0,
+          "asr": 0.0, "asr_ci95": [0.0, 0.4], "errors": 0, "severity": None},
+         {"catalog_id": "C2", "category": "C", "disposition": "run", "outcome": "confirmed", "trials": 5, "hits": 5,
+          "asr": 1.0, "asr_ci95": [0.5, 1.0], "errors": 0, "severity": "Critical"}],
+        [{"finding_id": "t1", "catalog_id": "C2", "severity": "Critical", "asr": 1.0, "asr_ci95": [0.5, 1.0],
+          "technique": "secret leakage", "evidence_level": "confirmed", "reproducible": True}])
+    store.record_scan(db, base)
+    store.record_scan(db, tgt)
+
+    c = store.scan_comparison(db, "R-tgt")
+    assert c is not None and c["base"]["run_id"] == "R-base"           # picks the most recent earlier scan of the target
+    assert c["base"]["grade"] == "C" and c["target"]["grade"] == "F"
+    deltas = {r["category"]: r["delta_asr"] for r in c["categories"]}
+    assert deltas["A"] == 0.3 and deltas["E"] == -0.6 and deltas["C"] == 1.0   # per-category ΔASR from stored coverage
+    assert [f["catalog_id"] for f in c["findings_new"]] == ["C2"]      # appeared in the target run
+    assert [f["catalog_id"] for f in c["findings_resolved"]] == ["E2"]  # present before, gone now
+    assert c["findings_persistent"] == []
+    assert "not an alignment-removal claim" in c["behavioural_note"]   # agnostic/LSCAN-003 framing preserved
+
+
+def test_scan_comparison_edge_cases(tmp_path):
+    db = tmp_path / "scans.db"
+    store.record_scan(db, _cmp_report("R-only", "2026-11-01T00:00:00+00:00", "A", [], []))
+    # the earliest scan of a target has nothing earlier to compare to
+    assert store.scan_comparison(db, "R-only") == {"target_ref": "openai+http://x#m", "base": None}
+    # an unknown run id is None (distinct from "no base")
+    assert store.scan_comparison(db, "nope") is None
+
+
+@pytest.mark.skipif(not api.FASTAPI_AVAILABLE, reason="FastAPI not installed (optional `api` extra)")
+def test_api_history_compare_endpoint(tmp_path):
+    from fastapi.testclient import TestClient
+    db = str(tmp_path / "scans.db")
+    store.record_scan(db, _cmp_report("R-base", "2026-11-01T00:00:00+00:00", "C",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.2, "trials": 5, "hits": 1,
+          "asr_ci95": [0.0, 0.5], "errors": 0, "severity": "Low"}], []))
+    store.record_scan(db, _cmp_report("R-tgt", "2026-11-10T00:00:00+00:00", "F",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.7, "trials": 5, "hits": 4,
+          "asr_ci95": [0.3, 0.9], "errors": 0, "severity": "High"}], []))
+    client = TestClient(api.create_app(api_keys=["secret"], db_path=db))
+    h = {"X-API-Key": "secret"}
+    r = client.get("/history/R-tgt/compare", headers=h)
+    assert r.status_code == 200 and r.json()["base"]["run_id"] == "R-base"
+    assert client.get("/history/R-base/compare", headers=h).json()["base"] is None   # earliest scan: no base
+    assert client.get("/history/nope/compare", headers=h).status_code == 404
+    assert client.get("/history/R-tgt/compare").status_code == 401                   # auth required

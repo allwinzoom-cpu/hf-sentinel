@@ -254,6 +254,31 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
 .dethead{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid var(--border)}
 .dethead .t{font-family:var(--mono);font-size:13px;word-break:break-all;min-width:0}
 .detsub{font-size:12px;color:var(--ink-3);padding:14px 18px 4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+/* ---- regression comparison (scan vs. previous scan of the same target) ---- */
+.cmp{display:flex;flex-direction:column;gap:12px}
+.cmphead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cmptag{font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:7px;border:1px solid var(--border)}
+.cmptag.worse{background:var(--crit-soft);color:var(--crit);border-color:var(--crit)}
+.cmptag.better{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.cmptag.flat{background:var(--surface-3);color:var(--ink-2)}
+.cmphead .gchg{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-3)}
+.cmphead .cmpbase,.cmpbase{font-size:11px;color:var(--ink-3);margin-left:auto}
+.cmpchips{display:flex;flex-wrap:wrap;gap:6px}
+.cmpchip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;border:1px solid var(--border);font-family:var(--mono)}
+.cmpchip.worse{background:var(--crit-soft);color:var(--crit)} .cmpchip.better{background:var(--ok-soft);color:var(--ok)}
+.cmpchip.flat{background:var(--surface-3);color:var(--ink-2)}
+.cmpbars{display:flex;flex-direction:column;gap:7px}
+.cmprow{display:grid;grid-template-columns:24px 1fr 52px;gap:10px;align-items:center}
+.cmprow .cl{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.cmptrack{position:relative;height:12px;background:var(--surface-3);border-radius:6px;overflow:hidden}
+.cmptrack::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--border-strong)}
+.cmptrack>i{position:absolute;top:1px;bottom:1px;border-radius:3px}
+.cmptrack>i.worse{left:50%;background:var(--crit)} .cmptrack>i.better{right:50%;background:var(--ok)}
+.cmprow .cd{font-family:var(--mono);font-size:12px;text-align:right}
+.cmprow .cd.worse{color:var(--crit)} .cmprow .cd.better{color:var(--ok)} .cmprow .cd.flat{color:var(--ink-3)}
+.cmpnew{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cmpnew .pl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;width:100%}
+.cmpnote{margin:2px 0 0}
 
 @media (max-width:860px){
   .launch,.runcols,.histgrid{grid-template-columns:1fr}
@@ -797,10 +822,16 @@ async function openDetail(row){
   // Live: pull the real coverage + findings from the store; demo rows have no per-technique detail to show.
   if(row.rid && API.live){
     body.innerHTML=head+'<p class="hint" style="padding:16px 18px">Loading coverage &amp; findings…</p>';
-    try{ const key=$('#apikey').value.trim();
-      const r=await fetch(API.base+'/history/'+encodeURIComponent(row.rid),{headers:key?{'X-API-Key':key}:{}});
+    try{ const key=$('#apikey').value.trim(); const h=key?{'X-API-Key':key}:{};
+      const r=await fetch(API.base+'/history/'+encodeURIComponent(row.rid),{headers:h});
       if(!r.ok) throw new Error('HTTP '+r.status);
       body.innerHTML=head+renderDetailBody(await r.json());
+      // regression vs. the previous scan of this target — secondary, so it never blocks the detail view
+      try{ const rc=await fetch(API.base+'/history/'+encodeURIComponent(row.rid)+'/compare',{headers:h});
+        if(rc.ok){ const c=await rc.json();
+          if(c && c.base){ const sub=body.querySelector('.detsub');
+            if(sub) sub.insertAdjacentHTML('beforebegin', renderComparison(c)); } }
+      }catch(_){/* comparison is best-effort */}
     }catch(e){ body.innerHTML=head+`<p class="hint" style="padding:16px 18px">Could not load detail (${esc(e.message)}).</p>`; }
   } else {
     const sev=[['Critical',row.crit],['High',row.high],['Medium',row.med],['Low',row.low]].filter(x=>x[1]);
@@ -810,6 +841,31 @@ async function openDetail(row){
       <p class="note" style="margin-top:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
       Per-technique coverage &amp; findings load from the live service (connect an API key).</p></div>`;
   }
+}
+function renderComparison(c){   // behavioural attackability delta vs. the previous scan of this target (LSCAN-003/009)
+  const dirn=v=>v>0.0005?'worse':(v<-0.0005?'better':'flat');
+  const sgn=v=>(v>0?'+':'')+Math.round(v*100)+'%';
+  const bars=(c.categories||[]).map(r=>{ const cls=dirn(r.delta_asr); const w=Math.min(50,Math.abs(r.delta_asr)*50);
+    return `<div class="cmprow"><span class="cl">${esc(r.category)}</span>
+      <div class="cmptrack"><i class="${cls}" style="width:${w}%"></i></div>
+      <span class="cd ${cls}">${sgn(r.delta_asr)}</span></div>`;}).join('');
+  const chips=[];
+  if((c.findings_new||[]).length) chips.push(`<span class="cmpchip worse">+${c.findings_new.length} new</span>`);
+  if((c.findings_resolved||[]).length) chips.push(`<span class="cmpchip better">−${c.findings_resolved.length} resolved</span>`);
+  if((c.findings_persistent||[]).length) chips.push(`<span class="cmpchip flat">${c.findings_persistent.length} persistent</span>`);
+  const newcards=(c.findings_new||[]).map(f=>`<span class="cmpchip worse">${esc(f.catalog_id)} · ${esc(f.severity)}</span>`).join('');
+  return `<div class="detsub">Regression vs. previous scan</div>
+    <div class="pad cmp">
+      <div class="cmphead">
+        <span class="cmptag ${dirn(c.overall_delta_asr)}">overall ${sgn(c.overall_delta_asr)} ASR</span>
+        <span class="gchg"><span class="gpill g-${esc(c.base.grade)}">${esc(c.base.grade)}</span> → <span class="gpill g-${esc(c.target.grade)}">${esc(c.target.grade)}</span></span>
+        <span class="cmpbase mono">base ${esc((c.base.run_id||'').slice(0,8))} · ${esc((c.base.started||'').slice(0,10))}</span>
+      </div>
+      ${chips.length?`<div class="cmpchips">${chips}</div>`:''}
+      <div class="cmpbars">${bars||'<span class="hint">no scored categories in common</span>'}</div>
+      ${newcards?`<div class="cmpnew"><span class="pl">New findings</span>${newcards}</div>`:''}
+      <p class="note cmpnote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>${esc(c.behavioural_note)}</p>
+    </div>`;
 }
 function renderDetailBody(d){
   const cov=(d.coverage||[]), finds=(d.findings||[]);

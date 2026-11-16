@@ -36,7 +36,8 @@ Auth is a constant-time API key (`Authorization: Bearer` or `X-API-Key`), per-ke
 browser-hardening headers (`nosniff`, `frame-ancestors 'none'`, `no-referrer`). The authorized scope is server-side — a
 client can never point the scanner at an out-of-scope target. Admission control bounds queued+running scans (`serve
 --max-active`, default 8× workers): past the bound the service sheds load with `429 + Retry-After` rather than queuing
-unbounded traffic to targets.
+unbounded traffic to targets. On shutdown (SIGTERM / `serve` stop) the service drains gracefully — in-flight scans are
+signalled to stop at their next boundary and finalize a partial report instead of being killed mid-request.
 
 Every scan (CLI, SDK, or service) can record to a SQLite event store and emit one normalized progress stream
 (`scan_started` → `technique_done` → `scan_completed`, shared by CLI/SDK/API/UI):

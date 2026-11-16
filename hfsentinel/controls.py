@@ -200,6 +200,9 @@ class Output(_Section):
     formats: list[Format] = Field(default_factory=lambda: ["md", "json"], min_length=1)
     push_to: str | None = None  # private HF dataset repo (D-006)
     fail_on: Literal["critical", "high", "medium"] = "critical"
+    # CI regression gate: fail if this target's overall attack-success rose by >= this fraction vs. its previous stored
+    # scan (needs --db and a prior scan). Observed behavioural delta only (LSCAN-003/009). None = gate off.
+    fail_on_regression: float | None = Field(default=None, ge=0.0, le=1.0)
     save_transcripts: bool = False  # confirmed findings only (D-015)
 
     _lists = field_validator("formats", mode="before")(_split)
@@ -281,7 +284,7 @@ FLAG_PATHS: dict[str, str] = {
     "budget_usd": "budget.usd", "budget_judge_usd": "budget.judge_usd", "max_minutes": "budget.minutes",
     "max_requests": "budget.max_requests",
     "out": "output.out", "formats": "output.formats", "push_to": "output.push_to", "fail_on": "output.fail_on",
-    "save_transcripts": "output.save_transcripts",
+    "fail_on_regression": "output.fail_on_regression", "save_transcripts": "output.save_transcripts",
 }
 # Config keys holding file paths: relative values resolve against the config file's directory.
 PATH_KEYS = ("select.goals", "extras.system_prompt", "extras.tools", "output.out")

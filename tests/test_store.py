@@ -191,6 +191,49 @@ def test_cli_scan_records_every_scan_to_the_db(tmp_path):
     assert cov == scan["techniques_total"] > 0
 
 
+def test_regression_delta_helper_needs_a_baseline():
+    # None whenever there is nothing to compare against; the overall ΔASR once a prior scan exists
+    assert cli._regression_delta(None) is None
+    assert cli._regression_delta({"target_ref": "t", "base": None}) is None          # first scan of the target
+    assert cli._regression_delta({"base": {"run_id": "b"}, "overall_delta_asr": 0.2}) == 0.2
+    d = cli._regression_delta({"base": {"run_id": "b"}, "overall_delta_asr": 0.2})
+    assert d >= 0.1 and not d >= 0.3                                                  # fires at 0.1, not at 0.3
+
+
+def test_cli_scan_regression_gate(tmp_path):
+    # the CI regression gate: the first scan of a target has no baseline (gate skipped, never EXIT_REGRESSION); a second
+    # scan of the same target reports the observed behavioural ΔASR vs. the first. A high threshold keeps the two
+    # same-target runs from firing on noise, so this stays deterministic.
+    srv, base = vuln_target.serve(profile="high", seed=5)
+    db = tmp_path / "scans.db"
+    uri = f"openai+{base}#{vuln_target.MODEL_ID}"
+    out = str(tmp_path / "rep")
+    try:
+        args = ["scan", uri, "--via", "direct", "--trials", "3", "--out", out, "--db", str(db),
+                "--fail-on-regression", "0.5"]
+        r1 = CliRunner().invoke(cli.app, args)
+        r2 = CliRunner().invoke(cli.app, args)
+    finally:
+        srv.shutdown()
+    assert "no earlier scan of this target" in r1.output, r1.output   # first scan: nothing to compare against
+    assert r1.exit_code != cli.EXIT_REGRESSION and r1.exit_code != cli.EXIT_USAGE, r1.output
+    assert "regression  overall attack-success" in r2.output, r2.output  # second scan: behavioural delta reported
+    assert "serving path not verified identical" in r2.output           # LSCAN-009 framing preserved on the gate
+    assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 2
+
+
+def test_cli_scan_regression_gate_needs_a_store(tmp_path):
+    # --fail-on-regression without --db cannot assess regression: it is skipped, never a hard failure
+    srv, base = vuln_target.serve(profile="high", seed=6)
+    uri = f"openai+{base}#{vuln_target.MODEL_ID}"
+    try:
+        res = CliRunner().invoke(cli.app, ["scan", uri, "--via", "direct", "--trials", "2",
+                                           "--out", str(tmp_path / "rep"), "--fail-on-regression", "0.1"])
+    finally:
+        srv.shutdown()
+    assert "needs a scan store" in res.output and res.exit_code != cli.EXIT_REGRESSION, res.output
+
+
 def test_sdk_scan_records_to_db(tmp_path):
     # the SDK path records every scan when db_path is set (the service reuses this)
     srv, url = vuln_target.serve(profile="high", seed=3)

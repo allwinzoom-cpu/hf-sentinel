@@ -4,7 +4,8 @@ Output is HF-Sentinel's own (D-014): no upstream tool names, no tracebacks, and 
 control characters so attacker-influenced text cannot drive the operator's terminal.
 
 Exit codes (stable): 0 ok · 1 internal error · 2 usage error · 3 refused by scope · 4 invalid input ·
-5 not supported in this build · 6 Hugging Face Hub unavailable · 10 a confirmed finding meets --fail-on.
+5 not supported in this build · 6 Hugging Face Hub unavailable · 10 a confirmed finding meets --fail-on ·
+11 an observed attack-success regression meets --fail-on-regression.
 """
 from __future__ import annotations
 
@@ -53,6 +54,7 @@ from hfsentinel.targets.resolve import resolve as resolve_target
 
 EXIT_OK, EXIT_INTERNAL, EXIT_USAGE, EXIT_SCOPE, EXIT_INPUT, EXIT_UNSUPPORTED, EXIT_HUB = 0, 1, 2, 3, 4, 5, 6
 EXIT_FINDINGS = 10
+EXIT_REGRESSION = 11
 WRITABLE_FORMATS = ("json", "sarif", "md", "html", "card")  # html: 16.5 safe encoding; card: model-card snippet
 MAX_REPORT_BYTES = 10_000_000
 
@@ -306,6 +308,15 @@ def _print_controls(res: Resolved) -> None:
         typer.echo(f"  {path:<28} {_clean(shown, 90):<40} {res.sources.get(path, 'default')}")
 
 
+def _regression_delta(cmp: dict | None) -> float | None:
+    """Overall observed attack-success ΔASR for the just-recorded scan vs. this target's previous stored scan, or None
+    when there is nothing to compare against (first scan of the target, no store, or an unknown run). Positive means
+    the target was more attackable this time. Behavioural only (LSCAN-003/009) — never an alignment/training claim."""
+    if not cmp or not cmp.get("base"):
+        return None
+    return cmp.get("overall_delta_asr")
+
+
 @app.command()
 def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `target:` in --config).",
                                                       show_default=False)] = None,
@@ -434,6 +445,9 @@ def scan(target: Annotated[str | None, typer.Argument(help="Target URI (or `targ
          formats: Annotated[str | None, _opt("md,json,sarif,html,card.", BUD, "--format")] = None,
          push_to: Annotated[str | None, _opt("Private HF dataset repo for reports.", BUD)] = None,
          fail_on: Annotated[str | None, _opt("critical | high | medium.", BUD)] = None,
+         fail_on_regression: Annotated[float | None, _opt("Fail (exit 11) if this target's overall attack-success rose "
+                                               "by >= this fraction (0-1) vs. its previous stored scan. Needs --db and "
+                                               "a prior scan; observed behavioural delta only.", BUD)] = None,
          save_transcripts: Annotated[bool | None, _opt("Keep full transcripts of confirmed findings only.", BUD,
                                                        "--save-transcripts/--redact")] = None,
          ) -> None:
@@ -799,9 +813,28 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
             typer.echo(f"store     recorded scan {run_id} to {_clean(str(db_path), 160)}")
         except (OSError, sqlite3.Error) as e:
             typer.echo(f"store     could not record scan (continuing): {_clean(str(e), 120)}")
+    # Regression gate (opt-in): compute + report BEFORE the findings gate so the behavioural delta always surfaces, but
+    # raise AFTER it, so a confirmed finding at/above --fail-on keeps exit-code precedence over a regression.
+    regression_fail = False
+    if c.output.fail_on_regression is not None:
+        if db_path:
+            from hfsentinel import store
+            delta = _regression_delta(store.scan_comparison(db_path, run_id))
+            if delta is None:
+                typer.echo("regression  no earlier scan of this target to compare against (gate skipped)")
+            else:
+                typer.echo(f"regression  overall attack-success {delta:+.0%} vs. this target's previous scan "
+                           "(observed behavioural delta; serving path not verified identical — LSCAN-003/009)")
+                regression_fail = delta >= c.output.fail_on_regression
+        else:
+            typer.echo("regression  --fail-on-regression needs a scan store (--db); gate skipped")
+
     fail_on = c.output.fail_on.capitalize()
     if any(at_least(f.severity, fail_on) for f in report_doc.findings):
         raise _fail(f"confirmed finding at or above --fail-on {c.output.fail_on}", EXIT_FINDINGS)
+    if regression_fail:
+        raise _fail(f"observed attack-success regression >= --fail-on-regression "
+                    f"{c.output.fail_on_regression:.0%}", EXIT_REGRESSION)
 
 
 def _authorize_live(ref: str, verified, via: Via):

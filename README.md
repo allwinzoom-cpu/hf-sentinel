@@ -28,6 +28,8 @@ with per-scan **drill-down** — drives the same API, same-origin:
 - `POST /scans` — queue a scan; returns `job_id` + a per-job `stream_token` · `GET /scans/{id}` — status / final report
 - `DELETE /scans/{id}` — cancel a queued or running scan (the Stop button in the console); cooperative, so the campaign
   stops at its next technique/stage boundary and the job settles to `cancelled` with a **partial** report still returned
+- `GET /scans/{id}/report?format=json|sarif|md|html` — download a finished scan's report (the console's export buttons),
+  rendered by the same canonical writers the CLI uses; SARIF uploads straight to GitHub code scanning
 - `GET /scans/{id}/events` — Server-Sent Events (live progress), authenticated by the stream token, so the API key
   never appears in a URL or access log
 - `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, confirmed findings

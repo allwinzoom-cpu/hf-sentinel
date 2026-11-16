@@ -69,6 +69,11 @@ a{color:var(--accent)}
   display:grid;place-items:center}
 .icbtn:hover{border-color:var(--border-strong);color:var(--ink)}
 .icbtn svg{width:17px;height:17px}
+.exportbar{display:flex;align-items:center;gap:6px}
+.expbtn{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);border-radius:7px;
+  padding:3px 9px;font-size:11px;font-weight:600;letter-spacing:.03em;cursor:pointer}
+.expbtn:hover{border-color:var(--accent);color:var(--accent)}
+.expbtn:disabled{opacity:.5;cursor:not-allowed}
 
 .wrap{flex:1;width:100%;max-width:1320px;margin:0 auto;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
@@ -354,7 +359,15 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
             <div class="log" id="log" role="log" aria-live="polite"></div>
           </div>
           <div class="card">
-            <div class="hd"><h3>Findings</h3></div>
+            <div class="hd"><h3>Findings</h3>
+              <div id="exportBar" class="exportbar" hidden>
+                <span class="mono" style="font-size:11px;color:var(--ink-3)">export</span>
+                <button class="expbtn" data-fmt="json" title="Download JSON report">JSON</button>
+                <button class="expbtn" data-fmt="sarif" title="Download SARIF (GitHub code scanning)">SARIF</button>
+                <button class="expbtn" data-fmt="md" title="Download Markdown report">MD</button>
+                <button class="expbtn" data-fmt="html" title="Download HTML report">HTML</button>
+              </div>
+            </div>
             <div class="pad"><div class="findings" id="findings"><p class="hint">Confirmed findings appear here as the oracle verifies them.</p></div></div>
           </div>
         </div>
@@ -507,6 +520,7 @@ function initRun(req){
   $('#findings').innerHTML='<p class="hint">Confirmed findings appear here as the oracle verifies them.</p>';
   $('#log').innerHTML=''; renderTechs();
   liveJob=null; const sb=$('#stopBtn'); if(sb) sb.hidden=true;  // demo runs aren't cancellable; runLive re-enables it
+  showExport(false);                                            // hide export until a live scan finishes with a report
   const notRun=TECHNIQUES.filter(t=>t.cat==='B'&&sel.cats.has('B')).length;
   $('#coverNote').textContent = run.total+' techniques · profile '+req.profile;
   setStatus('running','scanning'); logLine('scan','start','started · '+run.total+' techniques · profile='+req.profile);
@@ -587,6 +601,22 @@ async function runLive(req,base,key){
   es.onerror=()=>{ es.close(); showStop(false); logLine('info','info','event stream closed'); };
 }
 function showStop(on){ const b=$('#stopBtn'); if(!b) return; b.hidden=!on; if(on) b.disabled=false; }
+function showExport(on){ const b=$('#exportBar'); if(b) b.hidden=!on; }   // only live runs expose export; demo stays off
+async function downloadReport(fmt){
+  if(!liveJob) return; const btns=document.querySelectorAll('.expbtn'); btns.forEach(b=>b.disabled=true);
+  try{ const h=liveJob.key?{'X-API-Key':liveJob.key}:{};
+    const r=await fetch(liveJob.base+'/scans/'+liveJob.id+'/report?format='+encodeURIComponent(fmt),{headers:h});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const blob=await r.blob();
+    // filename comes from the server's Content-Disposition; fall back to a sane default
+    const cd=r.headers.get('content-disposition')||''; const m=cd.match(/filename="([^"]+)"/);
+    const name=m?m[1]:('hfsentinel-report.'+(fmt==='md'?'md':fmt));
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    logLine('scan','info','downloaded '+name);
+  }catch(e){ logLine('error','find','could not download report ('+e.message+')'); }
+  finally{ btns.forEach(b=>b.disabled=false); }
+}
 async function stopLive(){
   if(!liveJob) return; const b=$('#stopBtn'); if(b) b.disabled=true;   // one click; the server is idempotent anyway
   setStatus('running','cancelling'); logLine('scan','info','cancellation requested — stopping at the next stage boundary');
@@ -600,6 +630,7 @@ async function finishLive(jobId,base,key){ /* pull the completed report for find
     (rep.findings||[]).forEach(f=>addFinding({cid:f.catalog_id,severity:f.severity,
       cwe:f.catalog_id,title:f.technique||f.catalog_id,detail:'confirmed · ASR '+Math.round((f.asr||0)*100)+'%'}));
     setGrade((rep.grade&&rep.grade.overall)||gradeFromFindings(run.findings));
+    if(rep.run&&rep.run.run_id) showExport(true);   // a finished (or cancelled/partial) report is now downloadable
     loadHistory(base,key);
   }catch(e){/* keep the streamed view */}
 }
@@ -660,6 +691,7 @@ $('#go').onclick=()=>{
 };
 $('#apikey').addEventListener('change',loadCatalog);
 $('#stopBtn').onclick=stopLive;
+document.querySelectorAll('.expbtn').forEach(b=>b.onclick=()=>downloadReport(b.dataset.fmt));
 
 /* ---------- history (sample + persisted) ---------- */
 const SAMPLE_HISTORY=[

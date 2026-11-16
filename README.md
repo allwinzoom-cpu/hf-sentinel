@@ -22,7 +22,11 @@ hfsentinel serve --db scans.db           # console at http://127.0.0.1:8000/  (-
 ```
 
 The console — a launch panel (rule packs, categories, profile, knobs), a **live streamed run**, and a history dashboard
-with per-scan **drill-down** — drives the same API, same-origin:
+with per-scan **drill-down** — drives the same API, same-origin. Every confirmed finding (live card or history
+drill-down) **expands to its proof**: the redacted evidence excerpt the oracle matched, the statistical confidence
+(ASR with 95% CI, the baseline ASR and the **lift** over it — so the conservative confirm gate is visible, not implicit),
+the oracle and OWASP/ATLAS mapping, and the reproduction recipe (seed, trials, temperature, mutators) on live runs. The
+excerpt is the already-redacted ≤200-char proof (D-015), never raw traffic.
 
 - `GET /` — the console (static) · `GET /catalog` — profiles, categories, techniques, rule packs (the UI's options)
 - `POST /scans` — queue a scan; returns `job_id` + a per-job `stream_token` · `GET /scans/{id}` — status / final report
@@ -32,7 +36,8 @@ with per-scan **drill-down** — drives the same API, same-origin:
   rendered by the same canonical writers the CLI uses; SARIF uploads straight to GitHub code scanning
 - `GET /scans/{id}/events` — Server-Sent Events (live progress), authenticated by the stream token, so the API key
   never appears in a URL or access log
-- `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, confirmed findings
+- `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, and each confirmed
+  finding **with its proof** (redacted excerpt, baseline ASR + lift, oracle, OWASP/ATLAS) for the console drill-down
 
 Auth is a constant-time API key (`Authorization: Bearer` or `X-API-Key`), per-key rate-limited; every response carries
 browser-hardening headers (`nosniff`, `frame-ancestors 'none'`, `no-referrer`). The authorized scope is server-side — a

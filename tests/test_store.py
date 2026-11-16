@@ -27,7 +27,10 @@ REPORT = {
     ],
     "findings": [
         {"finding_id": "F-1", "catalog_id": "C2", "severity": "Critical", "asr": 1.0, "asr_ci95": [0.57, 1.0],
-         "technique": "Secret leakage from context", "evidence_level": "confirmed", "reproducible": True},
+         "technique": "Secret leakage from context", "evidence_level": "confirmed", "reproducible": True,
+         "baseline_asr": 0.0, "lift": 1.0, "oracle": {"name": "canary-match"},
+         "owasp": ["LLM06"], "atlas": ["AML.T0051"],
+         "evidence": {"hash": "a" * 64, "redacted_excerpt": "system canary <REDACTED> reproduced verbatim"}},
     ],
 }
 
@@ -49,6 +52,44 @@ def test_record_scan_captures_summary_coverage_and_findings(tmp_path):
     # confirmed finding is stored in full, with its CI split out
     f = conn.execute("SELECT * FROM findings WHERE run_id=?", (rid,)).fetchone()
     assert f["catalog_id"] == "C2" and f["severity"] == "Critical" and (f["ci_low"], f["ci_high"]) == (0.57, 1.0)
+    # the proof the console drill-down renders is persisted too (D-015: redacted excerpt, never raw traffic)
+    assert f["evidence_excerpt"] == "system canary <REDACTED> reproduced verbatim"
+    assert (f["baseline_asr"], f["lift"]) == (0.0, 1.0) and f["oracle"] == "canary-match"
+    assert f["owasp"] == "LLM06" and f["atlas"] == "AML.T0051"
+
+
+def test_scan_detail_returns_finding_proof_for_the_drilldown(tmp_path):
+    # scan_detail is what GET /history/{run_id} serves the console; it must carry the proof + precision, taxonomy as lists
+    db = tmp_path / "scans.db"
+    store.record_scan(db, REPORT)
+    detail = store.scan_detail(db, "20260101T000000Z-abcd")
+    assert detail is not None
+    f = next(x for x in detail["findings"] if x["catalog_id"] == "C2")
+    assert f["evidence_excerpt"] == "system canary <REDACTED> reproduced verbatim"
+    assert f["baseline_asr"] == 0.0 and f["lift"] == 1.0 and f["oracle"] == "canary-match"
+    assert f["owasp"] == ["LLM06"] and f["atlas"] == ["AML.T0051"]      # comma-joined storage back to lists
+    assert f["reproducible"] is True and f["evidence_level"] == "confirmed"
+
+
+def test_connect_migrates_an_older_findings_table(tmp_path):
+    # a store written by a build before the proof columns existed must gain them on connect (ADD COLUMN, non-destructive)
+    db = tmp_path / "old.db"
+    old = sqlite3.connect(db)
+    old.executescript(
+        "CREATE TABLE scans (run_id TEXT PRIMARY KEY, started TEXT, target_ref TEXT);"
+        "CREATE TABLE findings (run_id TEXT, finding_id TEXT, catalog_id TEXT, severity TEXT, asr REAL, "
+        "ci_low REAL, ci_high REAL, technique TEXT, evidence_level TEXT, reproducible INTEGER, "
+        "PRIMARY KEY (run_id, finding_id));")
+    old.commit()
+    old.close()
+    conn = store.connect(db)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(findings)").fetchall()}
+    conn.close()
+    assert {"evidence_excerpt", "baseline_asr", "lift", "oracle", "owasp", "atlas"} <= cols
+    # and a scan now records + reads back the proof against the migrated table
+    store.record_scan(db, REPORT)
+    f = next(x for x in store.scan_detail(db, "20260101T000000Z-abcd")["findings"] if x["catalog_id"] == "C2")
+    assert f["evidence_excerpt"] == "system canary <REDACTED> reproduced verbatim"
 
 
 def test_history_lists_recent_scans(tmp_path):

@@ -633,6 +633,12 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              adaptive: bool = False, emit_events: bool = False, db_path: str | Path | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
+    # Fail fast on a misconfigured regression gate: --fail-on-regression needs a store to compare against, so without
+    # --db it can never be evaluated. Catch it BEFORE sending any traffic (a config error), so it can't be masked by the
+    # findings gate once a scan has run. The store-write-failure case is still handled after record (it needs the scan).
+    if c.output.fail_on_regression is not None and not db_path:
+        raise _fail("--fail-on-regression could not be evaluated (needs a scan store (--db)); failing closed",
+                    EXIT_REGRESSION)
     started = dt.datetime.now(dt.timezone.utc)
     run_id = new_run_id(started)
     profile = _run_recon(t, c)
@@ -820,10 +826,8 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
     # was requested but cannot be evaluated (no store, or the store write failed), the build must NOT silently pass —
     # a CI gate that could not run is a failure, not a green. A first scan (no baseline) is a legitimate pass.
     reg_fire = reg_unevaluable = None
-    if c.output.fail_on_regression is not None:
-        if not db_path:
-            reg_unevaluable = "needs a scan store (--db)"
-        elif not recorded:
+    if c.output.fail_on_regression is not None:   # (the no-db case already failed closed before the scan ran)
+        if not recorded:
             reg_unevaluable = "scan store write failed"
         else:
             from hfsentinel import store

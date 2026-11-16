@@ -12,7 +12,7 @@ Per-technique coverage across the implemented dimensions — family, oracle, evi
 | A2 | A | deterministic | instruction-following-surrogate | exact | wired | yes |
 | A3 | A | deterministic | instruction-following-surrogate | exact | wired | yes |
 | A4 | A | deterministic | instruction-following-surrogate | exact | conditional | yes |
-| A5 | A | deterministic | instruction-following-surrogate | exact | wired | yes |
+| A5 | A | deterministic | policy-violation | exact | wired | yes |
 | A6 | A | deterministic | instruction-following-surrogate | exact | conditional | yes |
 | B1 | B | judge | policy-violation | recipe-only | engine-wired | yes |
 | B2 | B | judge | policy-violation | recipe-only | engine-wired | yes |

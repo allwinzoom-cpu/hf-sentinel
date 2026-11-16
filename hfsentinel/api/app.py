@@ -21,6 +21,7 @@ import datetime as dt
 import json
 import os
 import queue
+import re
 import secrets
 import threading
 import time
@@ -39,7 +40,7 @@ from hfsentinel.scope import ScopeError
 
 try:
     from fastapi import Depends, FastAPI, Header, HTTPException, Query
-    from fastapi.responses import HTMLResponse, StreamingResponse
+    from fastapi.responses import HTMLResponse, Response, StreamingResponse
     FASTAPI_AVAILABLE = True
 except Exception:                               # noqa: BLE001 - optional extra; core scanner must import without fastapi
     FASTAPI_AVAILABLE = False
@@ -340,6 +341,44 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
         if job is None:
             raise HTTPException(status_code=404, detail="unknown job id")
         return job.public()
+
+    # Render format → (content type, file extension). SARIF uploads to GitHub code-scanning as a `.sarif` file.
+    _REPORT_FORMATS = {"json": ("application/json", "json"),
+                       "sarif": ("application/sarif+json", "sarif"),
+                       "md": ("text/markdown; charset=utf-8", "md"),
+                       "html": ("text/html; charset=utf-8", "html")}
+
+    @app.get("/scans/{job_id}/report")
+    async def download_report(job_id: str, format: str = Query(default="json"),
+                              _key: str = Depends(require_key)) -> Response:
+        """Download a finished scan's report in a chosen format, rendered by the same canonical, output-encoded writers
+        the CLI uses (JSON / SARIF 2.1.0 / Markdown / HTML). Available once the job is terminal (a cancelled scan's
+        partial report downloads too)."""
+        fmt = format.lower()
+        if fmt not in _REPORT_FORMATS:
+            raise HTTPException(status_code=400, detail=f"unknown format; choose one of {sorted(_REPORT_FORMATS)}")
+        job = store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job id")
+        if job.status not in ("completed", "cancelled") or not job.result:
+            raise HTTPException(status_code=409, detail="report not available until the scan finishes")
+
+        from hfsentinel.report import render
+        from hfsentinel.report.build import Report
+        if fmt == "json":
+            body = json.dumps(job.result, indent=2)   # the stored report dict verbatim; no re-render needed
+        else:
+            try:
+                report = Report.model_validate(job.result)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail="stored report could not be rendered") from e
+            body = {"sarif": render.to_sarif, "md": render.to_markdown, "html": render.to_html}[fmt](report)
+
+        media_type, ext = _REPORT_FORMATS[fmt]
+        run_id = (job.result.get("run") or {}).get("run_id") or job.id
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(run_id))[:80]   # filename is attacker-influenced; keep it inert
+        return Response(content=body, media_type=media_type,
+                        headers={"Content-Disposition": f'attachment; filename="hfsentinel-{safe}.{ext}"'})
 
     @app.delete("/scans/{job_id}")
     async def cancel_scan(job_id: str, _key: str = Depends(require_key)) -> dict:

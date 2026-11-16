@@ -278,11 +278,65 @@ class _Visitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+# Language families for the regex fallback's comment masking. Comment syntax is language-specific: `//` is a line
+# comment in JS but floor division in Python, and `#` is Python's, so masking must be keyed on the fence's language hint
+# or it would blank real code (a false negative) in the wrong language. (Only comments are masked — several rules match
+# dynamic input *inside* string/template literals, e.g. ``exec(`ls ${d}`)`` or SQL + concatenation, so strings are kept;
+# a *static* string argument is already excluded by each rule's own lookahead.)
+_PY_LANGS = frozenset({"", "python", "py", "python3"})
+_JS_LANGS = frozenset({"javascript", "js", "jsx", "typescript", "ts", "tsx", "node", "mjs", "cjs"})
+
+
+def _mask_comments(code: str, lang: str) -> str:
+    """Blank comments (preserving length and newlines, so line numbers are unchanged) so the regex fallback does not fire
+    on a sink pattern sitting in a comment — a false positive, since a commented-out sink never executes. Runs only for
+    the structural REGEX_RULES; CREDENTIAL_RULES still scan raw text, because a secret in a comment is a real finding.
+    String literals are left intact (see the note above). Conservative and language-aware: `//` is masked only in JS (it
+    is floor division in Python), `#` only in Python; `/*…*/` in any language. To avoid blanking a `//`/`#`/`/*` that
+    sits inside a string, string literals are skipped over (not masked) while scanning."""
+    lang = (lang or "").lower()
+    hash_cmt, slash_cmt = lang in _PY_LANGS, lang in _JS_LANGS
+    out: list[str] = []
+    i, n = 0, len(code)
+    while i < n:
+        c = code[i]
+        if (slash_cmt and code[i:i + 2] == "//") or (hash_cmt and c == "#"):   # line comment → blank to EOL
+            j = code.find("\n", i)
+            j = n if j == -1 else j
+            out.append(" " * (j - i))
+            i = j
+        elif code[i:i + 2] == "/*":                                            # block comment (any language)
+            j = code.find("*/", i + 2)
+            end = n if j == -1 else j + 2
+            out.append("".join(ch if ch == "\n" else " " for ch in code[i:end]))
+            i = end
+        elif c in ("'", '"', "`"):           # skip over a string literal unchanged, so a // or # inside it is not a comment
+            out.append(c)
+            i += 1
+            while i < n:
+                out.append(code[i])
+                if code[i] == "\\" and i + 1 < n:    # escape: copy the escaped char so \" does not end the string early
+                    out.append(code[i + 1])
+                    i += 2
+                    continue
+                if code[i] == c:
+                    i += 1
+                    break
+                if code[i] == "\n" and c != "`":     # unterminated '…'/"…" ends at EOL (backticks may span lines)
+                    i += 1
+                    break
+                i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def scan_code(text: str) -> list[Sink]:
     """All sinks found in the code blocks of `text` (deduplicated by CWE + rule + line)."""
     found: set[Sink] = set()
     for lang, code in extract_code(text):
-        for cwe, rule, rx in CREDENTIAL_RULES:  # hardcoded secrets are literals, not structure — always scanned
+        for cwe, rule, rx in CREDENTIAL_RULES:  # hardcoded secrets are literals, not structure — always scanned raw
             for m in rx.finditer(code):
                 found.add(Sink(cwe, rule, code.count("\n", 0, m.start()) + 1))
         tree = None
@@ -296,9 +350,10 @@ def scan_code(text: str) -> list[Sink]:
             v.visit(tree)
             found.update(v.sinks)
             continue
+        masked = _mask_comments(code, lang)   # ignore sink patterns sitting in comments (false positives)
         for cwe, rule, rx in REGEX_RULES:
-            for m in rx.finditer(code):
-                found.add(Sink(cwe, rule, code.count("\n", 0, m.start()) + 1))
+            for m in rx.finditer(masked):
+                found.add(Sink(cwe, rule, masked.count("\n", 0, m.start()) + 1))
     return sorted(found, key=lambda s: (s.cwe, s.line, s.rule))
 
 

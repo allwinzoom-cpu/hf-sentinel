@@ -812,13 +812,32 @@ function findingProofHTML(f){
 }
 /* One delegated toggle for every expandable finding, live card or history modal alike. */
 document.addEventListener('click',e=>{ const top=e.target.closest('.finding.hasproof > .top'); if(top) top.parentElement.classList.toggle('open'); });
+/* Export a finished scan from the history drill-down — re-renders the stored report server-side (same writers as live). */
+document.addEventListener('click',async e=>{ const b=e.target.closest('.histexpbtn'); if(!b) return;
+  const rid=b.dataset.rid, fmt=b.dataset.fmt; const bar=b.closest('.histexport'); const err=bar&&bar.querySelector('.experr');
+  const btns=bar?bar.querySelectorAll('.histexpbtn'):[]; btns.forEach(x=>x.disabled=true); if(err) err.textContent='';
+  try{ const key=$('#apikey').value.trim(); const h=key?{'X-API-Key':key}:{};
+    const r=await fetch(API.base+'/history/'+encodeURIComponent(rid)+'/report?format='+encodeURIComponent(fmt),{headers:h});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const blob=await r.blob(); const cd=r.headers.get('content-disposition')||''; const m=cd.match(/filename="([^"]+)"/);
+    const name=m?m[1]:('hfsentinel-'+rid+'.'+(fmt==='md'?'md':fmt));
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }catch(ex){ if(err) err.textContent='could not export ('+ex.message+')'; }
+  finally{ btns.forEach(x=>x.disabled=false); }
+});
 function closeDetail(){ $('#detail').hidden=true; }
 async function openDetail(row){
   if(!row) return;
   $('#detTitle').textContent='Scan '+(row.run||'');
   const body=$('#detBody'); $('#detail').hidden=false;
+  // a finished scan in the store is re-exportable (SARIF for GitHub, MD/HTML to share) — same writers as the live run
+  const exp = (row.rid && API.live) ? `<div class="exportbar histexport" style="margin-left:auto">
+      <span class="mono" style="font-size:11px;color:var(--ink-3)">export</span>
+      ${['json','sarif','md','html'].map(f=>`<button class="expbtn histexpbtn" data-fmt="${f}" data-rid="${esc(row.rid)}" title="Download ${f.toUpperCase()} report">${f.toUpperCase()}</button>`).join('')}
+      <span class="experr" style="color:var(--crit);font-size:11px"></span></div>` : '';
   const head=`<div class="dethead"><div style="min-width:0"><div class="t">${esc(row.target)}</div></div>
-    <span class="gpill g-${row.grade}" style="margin-left:auto">${row.grade}</span></div>`;
+    <span class="gpill g-${esc(row.grade)}"${exp?'':' style="margin-left:auto"'}>${esc(row.grade)}</span>${exp}</div>`;
   // Live: pull the real coverage + findings from the store; demo rows have no per-technique detail to show.
   if(row.rid && API.live){
     body.innerHTML=head+'<p class="hint" style="padding:16px 18px">Loading coverage &amp; findings…</p>';

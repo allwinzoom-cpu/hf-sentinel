@@ -43,6 +43,10 @@ never raw traffic.
   scan of the same target (per-category ΔASR, grade change, findings new/resolved/persistent). The console shows it atop
   the drill-down. Observed delta only (LSCAN-003) — never an alignment-removal claim, and the serving path is not
   asserted identical (LSCAN-009)
+- `GET /history/{run_id}/report?format=json|sarif|md|html` — **re-export a past scan** from the store (the history
+  drill-down's export buttons), rendered by the same canonical writers as the live download — pull last week's SARIF for
+  GitHub code scanning or re-share the HTML without re-running it. The store keeps the full assembled report (alias-only,
+  aggregate-only, evidence redacted to ≤200-char excerpts — D-015) alongside the slim summary/coverage/findings
 
 Auth is a constant-time API key (`Authorization: Bearer` or `X-API-Key`), per-key rate-limited; every response carries
 browser-hardening headers (`nosniff`, `frame-ancestors 'none'`, `no-referrer`). The authorized scope is server-side — a

@@ -12,6 +12,7 @@ a retried scan never double-counts. Opt-in via a configured DB path: once a depl
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,10 @@ CREATE TABLE IF NOT EXISTS findings (
     asr REAL, ci_low REAL, ci_high REAL, technique TEXT, evidence_level TEXT, reproducible INTEGER,
     evidence_excerpt TEXT, baseline_asr REAL, lift REAL, oracle TEXT, owasp TEXT, atlas TEXT,
     PRIMARY KEY (run_id, finding_id),
+    FOREIGN KEY (run_id) REFERENCES scans(run_id)
+);
+CREATE TABLE IF NOT EXISTS reports (
+    run_id TEXT PRIMARY KEY, report_json TEXT,
     FOREIGN KEY (run_id) REFERENCES scans(run_id)
 );
 CREATE INDEX IF NOT EXISTS idx_scans_target ON scans(target_ref);
@@ -125,6 +130,10 @@ def record_scan(db_path: str | Path, report: Any, *, recorded_at: str | None = N
                  "requests": ledger.get("requests"), "errors": ledger.get("errors"), "cost_usd": cost,
                  "scope_source": scope.get("source"), "scope_ref": scope.get("reference"),
                  "report_sha256": r.get("report_sha256")})
+            # The full assembled report (after the scans row, which it references), kept so a past scan is re-exportable
+            # (SARIF/MD/HTML/JSON) from the console long after the in-memory job is gone. Same alias-only, aggregate-only
+            # artifact the service already hands out, evidence already redacted to ≤200-char excerpts (D-015).
+            conn.execute("INSERT OR REPLACE INTO reports VALUES (?,?)", (run_id, json.dumps(r)))
             for t in techniques:
                 lo, hi = _ci(t, "asr_ci95")
                 conn.execute(
@@ -207,6 +216,20 @@ def scan_detail(db_path: str | Path, run_id: str) -> dict | None:
         conn.close()
 
 
+def scan_report(db_path: str | Path, run_id: str) -> dict | None:
+    """The full assembled report dict for a past scan, or None if the run is unknown OR predates report capture (an
+    older store recorded the summary/coverage/findings but no report blob). Lets the console re-export a historical scan
+    (SARIF for GitHub code scanning, Markdown/HTML to share) without re-running it."""
+    conn = connect(db_path)
+    try:
+        row = conn.execute("SELECT report_json FROM reports WHERE run_id=?", (run_id,)).fetchone()
+        if row is None or row["report_json"] is None:
+            return None
+        return json.loads(row["report_json"])
+    finally:
+        conn.close()
+
+
 def _category_asr(coverage: list[dict]) -> dict[str, float]:
     """Mean ASR across the run (scored) techniques in each category — the same per-category signal diff_reports uses,
     computed here from the stored coverage rows so no full report is needed to compare two scans."""
@@ -283,6 +306,7 @@ def prune(db_path: str | Path, *, keep: int = 1000) -> int:
             for run_id in stale:
                 conn.execute("DELETE FROM coverage WHERE run_id=?", (run_id,))
                 conn.execute("DELETE FROM findings WHERE run_id=?", (run_id,))
+                conn.execute("DELETE FROM reports WHERE run_id=?", (run_id,))
                 conn.execute("DELETE FROM scans WHERE run_id=?", (run_id,))
         return len(stale)
     finally:

@@ -261,12 +261,18 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     @app.middleware("http")
     async def _security_headers(request, call_next):
         """Harden every response for the browser-facing console: block MIME sniffing, framing (clickjacking) and
-        referrer leakage. No CSP beyond frame-ancestors, so the self-contained console's inline assets keep working."""
+        referrer leakage, and a real CSP. The console is self-contained (inline script/style) so script/style keep
+        'unsafe-inline', but everything else is locked down (default-src 'self', object/base/form blocked, connect/img
+        scoped to same-origin, fonts to the Google Fonts hosts) — defense-in-depth beyond the output-escaping."""
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        response.headers.setdefault("Content-Security-Policy", (
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+            "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; "
+            "frame-ancestors 'none'"))
         return response
 
     async def require_key(authorization: str | None = Header(default=None),
@@ -279,17 +285,36 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
         if not presented or not any(secrets.compare_digest(presented, k) for k in keys):
             raise HTTPException(status_code=401, detail="missing or invalid API key")
         if not limiter.allow(presented):
-            raise HTTPException(status_code=429, detail="rate limit exceeded")
+            # Retry-After so a caller can back off cleanly (and to match the admission-control 429 on /scans).
+            raise HTTPException(status_code=429, detail="rate limit exceeded", headers={"Retry-After": "1"})
         return presented
 
     def _run(job_id: str, target: str, kwargs: dict) -> None:
         job = store.get(job_id)
         events = job.events if job else None
         cancel = job.cancel_event.is_set if job and job.cancel_event else None
+
+        def _emit(ev: dict) -> None:
+            # SSE is OPTIONAL: never block the scan worker on an undrained queue. A blocking put on the bounded queue
+            # would wedge this pool thread forever when no client (or a disconnected one) is draining — a self-inflicted
+            # DoS that can starve the whole worker pool. Drop the oldest progress event to make room instead; a slow or
+            # absent client loses old progress, never the scan itself.
+            try:
+                events.put_nowait(ev)
+            except queue.Full:
+                try:
+                    events.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    events.put_nowait(ev)
+                except queue.Full:
+                    pass
+
         store.update(job_id, status="running")
         try:
             result = sdk.scan(target, scope_file=scope_file, signers_file=signers_file, db_path=db_path,
-                              progress=(events.put if events else None), cancel=cancel, **kwargs)
+                              progress=(_emit if events else None), cancel=cancel, **kwargs)
             # A cancelled scan returns a partial report; mark it so the operator can tell it from a full run.
             status = "cancelled" if getattr(result, "cancelled", False) else "completed"
             store.update(job_id, status=status, result=result.to_dict(), finished=_now())

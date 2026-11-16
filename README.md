@@ -67,9 +67,15 @@ Every scan (CLI, SDK, or service) can record to a SQLite event store and emit on
 ```bash
 hfsentinel scan <target> --scope scope.yaml --db scans.db --events   # record every scan + emit JSON events on stderr
 hfsentinel history --db scans.db [--run <id>]                         # list recent scans, or one scan's coverage+findings
+hfsentinel history --db scans.db --compare <run_id>                   # behavioural regression vs. this target's previous scan
+hfsentinel history --db scans.db --trend <target>                    # attack-success trend across a target's recent scans
+hfsentinel history --db scans.db --export <run_id> --format sarif --out dir/  # re-export a past report (json|sarif|md|html)
 hfsentinel prune   --db scans.db --keep 1000                         # retention: keep the newest N, drop older scans
 hfsentinel scan <target> --db scans.db --fail-on-regression 0.1      # CI gate: exit 11 if attack-success rose ≥ 10% vs. last
 ```
+
+The CLI, API/console all read the same store: `history --compare/--trend/--export` are the command-line equivalents of the
+console's regression/trend views and history re-export (observed behavioural deltas only — LSCAN-003/009).
 
 `--fail-on-regression F` turns the stored history into a **CI regression gate**: after recording the scan it compares
 the target's overall attack-success against its previous stored scan and exits **11** if it rose by ≥ `F` (0–1). Needs

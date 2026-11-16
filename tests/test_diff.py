@@ -66,7 +66,7 @@ def test_diff_reports_flags_alignment_removal():
         srv_t.shutdown()
         srv_b.shutdown()
     d = diff_reports(tgt, bse)
-    assert d["overall_delta_asr"] > 0 and d["alignment_removed"] and d["alignment_removed_in"]
+    assert d["overall_delta_asr"] > 0 and d["more_attackable"] and d["more_attackable_in"]
     assert all(r["delta_asr"] >= 0 for r in d["categories"])  # high is at least as attackable as control everywhere
     assert d["target_over_refusal"] == 0.05 and d["base_over_refusal"] == 0.40
 
@@ -84,13 +84,13 @@ def test_to_table_renders_side_by_side_with_verdict():
     assert "Materially more attackable (behavioural)" in table
 
 
-def test_identical_targets_show_no_alignment_removal():
+def test_identical_targets_show_no_behavioural_delta():
     srv, base = vuln_target.serve(profile="control", seed=3)
     try:
         d = diff_reports(_report(base), _report(base))
     finally:
         srv.shutdown()
-    assert not d["alignment_removed"] and "No alignment removal detected" in to_table(d)
+    assert not d["more_attackable"] and "Not materially more attackable (behavioural)" in to_table(d)
 
 
 def test_cli_diff_outputs_a_side_by_side_table():

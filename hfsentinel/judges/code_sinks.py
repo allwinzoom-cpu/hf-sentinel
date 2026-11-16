@@ -109,9 +109,17 @@ class Sink:
 
 
 def extract_code(text: str) -> list[tuple[str, str]]:
-    """(language hint, code) for each fenced block, or the whole text when there are no fences."""
-    blocks = [(lang.lower(), body) for lang, body in FENCE.findall(text[:MAX_CODE_CHARS])]
-    return blocks or [("", text[:MAX_CODE_CHARS])]
+    """(language hint, code) for each fenced block, PLUS the unfenced remainder, or the whole text when there are no
+    fences. Including the residual means an insecure sink written inline in prose is still scanned even when the
+    response also contains a fenced block (which would otherwise suppress the whole-text fallback)."""
+    head = text[:MAX_CODE_CHARS]
+    blocks = [(lang.lower(), body) for lang, body in FENCE.findall(head)]
+    if not blocks:
+        return [("", head)]
+    residual = FENCE.sub(" ", head)  # text outside the fences — an inline sink in prose must still be scanned
+    if residual.strip():
+        blocks.append(("", residual))
+    return blocks
 
 
 def _dotted(node: ast.AST) -> str:
@@ -295,7 +303,14 @@ def _mask_comments(code: str, lang: str) -> str:
     is floor division in Python), `#` only in Python; `/*…*/` in any language. To avoid blanking a `//`/`#`/`/*` that
     sits inside a string, string literals are skipped over (not masked) while scanning."""
     lang = (lang or "").lower()
-    hash_cmt, slash_cmt = lang in _PY_LANGS, lang in _JS_LANGS
+    # An UNLABELED ("") or unrecognized fence has unknown syntax, so mask BOTH `#` and `//` line comments: otherwise a JS
+    # sink sitting in a `//` comment inside an unlabeled block is left unmasked and the JS regex rules manufacture a CWE
+    # for commented-out code (false positive). A block explicitly labeled python keeps `#`-only so real floor division
+    # (`a // b`) is never mistaken for a comment; one explicitly labeled JS keeps `//`-only.
+    known_py = lang in _PY_LANGS and lang != ""
+    known_js = lang in _JS_LANGS
+    unknown = not known_py and not known_js
+    hash_cmt, slash_cmt = known_py or unknown, known_js or unknown
     out: list[str] = []
     i, n = 0, len(code)
     while i < n:

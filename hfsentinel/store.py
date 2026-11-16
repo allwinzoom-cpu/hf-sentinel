@@ -13,6 +13,7 @@ a retried scan never double-counts. Opt-in via a configured DB path: once a depl
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -65,12 +66,27 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     scan writes. The parent directory is created if missing."""
     path = Path(db_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
+    # The store durably aggregates confirmed-finding evidence excerpts, redacted target output, target refs and grades
+    # across every scan — the most sensitive, longest-lived data in the product. Lock it to the owner (0600), the same
+    # discipline the one-shot report/scope writers use. Pre-create the main DB 0600 so there is no world-readable
+    # window before the chmod; WAL/-shm sidecars (created when WAL is enabled below) carry the same data, so chmod them.
+    if not path.exists():
+        try:
+            os.close(os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+        except FileExistsError:
+            pass
     conn = sqlite3.connect(str(path), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     _migrate_findings_columns(conn)
+    for p in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+        try:
+            if p.exists():
+                os.chmod(p, 0o600)
+        except OSError:
+            pass
     return conn
 
 
@@ -111,7 +127,10 @@ def record_scan(db_path: str | Path, report: Any, *, recorded_at: str | None = N
         raise ValueError("report has no run_id; cannot record")
 
     ran = [t for t in techniques if t.get("disposition") == "run"]
-    cost = ledger.get("cost_priced_usd") or ledger.get("cost_reported_usd") or ledger.get("cost_estimated_usd") or 0.0
+    # Pick the first cost source that is actually PRESENT — an explicit 0.0 (free-tier / zero-cost run) is a real value,
+    # not "missing", so a plain `a or b or c` chain would wrongly skip it and report an estimate instead.
+    cost = next((ledger[k] for k in ("cost_priced_usd", "cost_reported_usd", "cost_estimated_usd")
+                 if ledger.get(k) is not None), 0.0)
     conn = connect(db_path)
     try:
         with conn:  # one transaction; rolls back on any error
@@ -137,7 +156,8 @@ def record_scan(db_path: str | Path, report: Any, *, recorded_at: str | None = N
             for t in techniques:
                 lo, hi = _ci(t, "asr_ci95")
                 conn.execute(
-                    "INSERT INTO coverage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    # OR REPLACE: a duplicated catalog_id within one run must not IntegrityError-rollback the WHOLE scan
+                    "INSERT OR REPLACE INTO coverage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (run_id, t.get("catalog_id"), t.get("category"), t.get("disposition"), t.get("outcome"),
                      t.get("reason"), t.get("trials"), t.get("hits"), t.get("asr"), lo, hi, t.get("errors"),
                      t.get("severity")))
@@ -146,7 +166,7 @@ def record_scan(db_path: str | Path, report: Any, *, recorded_at: str | None = N
                 ev = f.get("evidence") or {}
                 oracle = f.get("oracle") or {}
                 conn.execute(
-                    "INSERT INTO findings (run_id, finding_id, catalog_id, severity, asr, ci_low, ci_high, technique, "
+                    "INSERT OR REPLACE INTO findings (run_id, finding_id, catalog_id, severity, asr, ci_low, ci_high, technique, "
                     "evidence_level, reproducible, evidence_excerpt, baseline_asr, lift, oracle, owasp, atlas) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (run_id, f.get("finding_id"), f.get("catalog_id"), f.get("severity"), f.get("asr"), lo, hi,

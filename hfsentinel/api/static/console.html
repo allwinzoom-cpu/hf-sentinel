@@ -315,9 +315,9 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
       <div><b>Sentinel Console</b><br><span>black-box llm red-team</span></div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Views">
-      <button role="tab" data-view="launch" aria-selected="true">Launch</button>
-      <button role="tab" data-view="run" aria-selected="false">Live run</button>
-      <button role="tab" data-view="history" aria-selected="false">History</button>
+      <button role="tab" id="tab-launch" aria-controls="view-launch" data-view="launch" aria-selected="true">Launch</button>
+      <button role="tab" id="tab-run" aria-controls="view-run" data-view="run" aria-selected="false" tabindex="-1">Live run</button>
+      <button role="tab" id="tab-history" aria-controls="view-history" data-view="history" aria-selected="false" tabindex="-1">History</button>
     </nav>
     <div class="sp"></div>
     <button class="icbtn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme"></button>
@@ -325,7 +325,7 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
 
   <main class="wrap">
     <!-- LAUNCH -->
-    <section id="view-launch">
+    <section id="view-launch" role="tabpanel" aria-labelledby="tab-launch" tabindex="0">
       <div class="launch">
         <div class="card">
           <div class="hd"><h3>Target &amp; scope</h3><span class="demotag">demo mode</span></div>
@@ -385,7 +385,7 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
     </section>
 
     <!-- RUN -->
-    <section id="view-run" hidden>
+    <section id="view-run" role="tabpanel" aria-labelledby="tab-run" tabindex="0" hidden>
       <div class="card pad">
         <div class="runhead">
           <div class="gradeorb" id="grade">·<small>GRADE</small></div>
@@ -438,7 +438,7 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
     </section>
 
     <!-- HISTORY -->
-    <section id="view-history" hidden>
+    <section id="view-history" role="tabpanel" aria-labelledby="tab-history" tabindex="0" hidden>
       <div class="statrow" id="stats"></div>
       <div class="histgrid">
         <div class="card">
@@ -538,15 +538,31 @@ function renderFlags(){ $('#flags').innerHTML=FLAGS.map(f=>`<label class="toggle
   $$('#flags input').forEach(i=>i.onchange=()=>{ i.checked?sel.flags.add(i.dataset.flag):sel.flags.delete(i.dataset.flag);
     store.set('flags',[...sel.flags]); }); }
 renderPacks(); renderCats(); renderFlags();
-$('#apikey').value=store.get('apikey',''); $('#apikey').addEventListener('input',e=>store.set('apikey',e.target.value.trim()));
+// The API key is a live secret: keep it in sessionStorage (cleared when the tab closes), NOT localStorage (long-lived
+// on disk / shared machines). Migrate+purge any key a prior build persisted to localStorage.
+const apikeyStore={get(){try{return sessionStorage.getItem('apikey')||''}catch(e){return ''}},
+  set(v){try{sessionStorage.setItem('apikey',v)}catch(e){}}};
+try{ const old=localStorage.getItem('apikey'); if(old){ apikeyStore.set(old); localStorage.removeItem('apikey'); } }catch(e){}
+$('#apikey').value=apikeyStore.get(); $('#apikey').addEventListener('input',e=>apikeyStore.set(e.target.value.trim()));
 
 /* ---------- view routing ---------- */
 const VIEWS=['launch','run','history'];
 function show(v){ if(!VIEWS.includes(v)) v='launch';
   VIEWS.forEach(x=>$('#view-'+x).hidden = x!==v);
-  $$('.tabs button').forEach(b=>b.setAttribute('aria-selected', b.dataset.view===v));
+  $$('.tabs button').forEach(b=>{ const on=b.dataset.view===v;
+    b.setAttribute('aria-selected', on); b.tabIndex = on?0:-1; });   // roving tabindex: only the selected tab is tabbable
   if(location.hash.slice(1)!==v) history.replaceState(null,'','#'+v); }
 $$('.tabs button').forEach(b=>b.onclick=()=>show(b.dataset.view));
+// Arrow/Home/End move between tabs (WAI-ARIA tabs pattern) and follow focus to the newly selected tab.
+$('.tabs').addEventListener('keydown',e=>{
+  const tabs=$$('.tabs button'); const i=tabs.findIndex(b=>b.getAttribute('aria-selected')==='true'); if(i<0) return;
+  let j=null;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') j=(i+1)%tabs.length;
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp') j=(i-1+tabs.length)%tabs.length;
+  else if(e.key==='Home') j=0; else if(e.key==='End') j=tabs.length-1;
+  if(j===null) return;
+  e.preventDefault(); show(tabs[j].dataset.view); tabs[j].focus();
+});
 addEventListener('hashchange',()=>show(location.hash.slice(1)));
 
 /* ---------- scan request (exact ScanRequest contract) ---------- */
@@ -575,6 +591,9 @@ function gradeFromFindings(fs){ if(!fs.length) return 'A';
 function setGrade(g){ const o=$('#grade'); o.className='gradeorb g-'+g; o.firstChild.textContent=g; }
 
 function initRun(req){
+  // close any still-open stream from a previous run FIRST — otherwise its onmessage keeps firing and mutating this new
+  // run's counters/techniques, corrupting the live view when scans overlap.
+  if(liveJob&&liveJob.es){ try{ liveJob.es.close(); }catch(e){} }
   const chosen=TECHNIQUES.filter(t=>sel.cats.has(t.cat));
   run={req,total:chosen.length,done:0,req_n:0,cost:0,findings:[],techs:chosen.map(t=>({...t,status:'queued'}))};
   $('#runTarget').textContent=req.target; $('#runId').textContent='run '+Math.random().toString(36).slice(2,10);
@@ -658,15 +677,40 @@ async function runLive(req,base,key){
   let job;
   try{ const r=await fetch(base+'/scans',{method:'POST',headers:h,body:JSON.stringify(req)});
     if(!r.ok) throw new Error('HTTP '+r.status); job=await r.json(); }
-  catch(e){ logLine('error','find','could not reach API ('+e.message+') — falling back to demo'); return runDemo(req); }
+  catch(e){
+    // A connected/keyed scan that fails (bad key 401, quota/rate 429, validation 422, network) must surface the error —
+    // NEVER silently fall back to the demo simulator, which would paint fabricated findings/grade as if they were real.
+    logLine('error','find','scan request failed ('+e.message+') — not simulated; check the API key, quota, or request');
+    setStatus('failed','request failed'); showStop(false); goReady(); return;
+  }
   $('#runId').textContent=job.job_id||'job';
-  liveJob={id:job.job_id,base:base,key:key}; showStop(true);  // a real scan can be stopped; the demo cannot
+  liveJob={id:job.job_id,base:base,key:key,es:null,retries:0,done:false};
+  showStop(true);  // a real scan can be stopped; the demo cannot
   // the server returns the events URL carrying a per-job stream token (not the API key); use it verbatim
-  const es=new EventSource(base+job.events);
-  es.onmessage=ev=>{ let d; try{d=JSON.parse(ev.data)}catch(e){return}
-    handleEvent(d); if(d.type==='scan_closed'){ es.close(); showStop(false); finishLive(job.job_id,base,key); } };
-  es.onerror=()=>{ es.close(); showStop(false); logLine('info','info','event stream closed'); };
+  const url=base+job.events;
+  const open=()=>{
+    const es=new EventSource(url); liveJob.es=es;
+    es.onmessage=ev=>{ let d; try{d=JSON.parse(ev.data)}catch(e){return}
+      handleEvent(d); if(d.type==='scan_closed'){ liveJob.done=true; es.close(); showStop(false); finishLive(job.job_id,base,key); } };
+    es.onerror=async ()=>{
+      es.close();
+      if(liveJob.done) return;                 // normal end already handled by scan_closed
+      // A transient blip must not leave the run stuck "running": reconcile against the job's real state, and if it
+      // finished server-side, pull the report; otherwise reconnect a few times before giving up (EventSource auto-
+      // reconnect is defeated by close(), so we drive it explicitly).
+      try{ const r=await fetch(base+'/scans/'+job.job_id,{headers:key?{'X-API-Key':key}:{}});
+        if(r.ok){ const j=await r.json();
+          if(j.status && j.status!=='running' && j.status!=='queued'){ liveJob.done=true; showStop(false);
+            finishLive(job.job_id,base,key); return; } }
+      }catch(_){/* fall through to reconnect */}
+      if(liveJob.retries++ < 4){ logLine('info','info','event stream dropped — reconnecting'); setTimeout(open,1500); }
+      else { showStop(false); setStatus('running','stream lost');
+        logLine('error','find','event stream lost — open this run from History for the final report'); goReady(); }
+    };
+  };
+  open();
 }
+function goReady(){ const b=$('#go'); if(b){ b.disabled=false; b.removeAttribute('aria-busy'); } }
 function showStop(on){ const b=$('#stopBtn'); if(!b) return; b.hidden=!on; if(on) b.disabled=false; }
 function showExport(on){ const b=$('#exportBar'); if(b) b.hidden=!on; }   // only live runs expose export; demo stays off
 async function downloadReport(fmt){
@@ -700,6 +744,7 @@ async function finishLive(jobId,base,key){ /* pull the completed report for find
     if(rep.run&&rep.run.run_id) showExport(true);   // a finished (or cancelled/partial) report is now downloadable
     loadHistory(base,key);
   }catch(e){/* keep the streamed view */}
+  finally{ goReady(); }                             // re-enable Launch once the run has settled
 }
 function handleEvent(d){ /* bridges the server event stream → the same renderers the demo uses */
   if(d.type==='scan_started'){ if(d.total) {run.total=d.total; $('#kTotal').textContent=d.total;} logLine('scan','start','started · '+(d.total||'?')+' techniques'); }
@@ -755,11 +800,13 @@ async function loadHistory(base,key){
 
 /* ---------- launch ---------- */
 $('#go').onclick=()=>{
+  const b=$('#go'); if(b&&b.disabled) return;                    // a launch is already in flight — ignore the double-click
   const req=buildRequest();
   if(!req.target){ $('#target').focus(); return; }
   show('run');
   const key=$('#apikey').value.trim();
-  if(API.live && key) runLive(req,API.base,key); else runDemo(req);
+  if(API.live && key){ if(b){ b.disabled=true; b.setAttribute('aria-busy','true'); } runLive(req,API.base,key); }
+  else runDemo(req);
 };
 $('#apikey').addEventListener('change',loadCatalog);
 $('#stopBtn').onclick=stopLive;
@@ -791,9 +838,9 @@ function renderHistory(){
     ['Critical',crit,'require action'],['Spend','$'+cost.toFixed(2),'priced API cost']
   ].map(s=>`<div class="stat"><div class="k">${s[0]}</div><div class="v tnum">${s[1]}</div><div class="d">${s[2]}</div></div>`).join('');
   $('#histrows').innerHTML=rows.map((r,i)=>`<tr class="hrow" data-idx="${i}" tabindex="0" title="View coverage &amp; findings">
-    <td>${r.run}</td><td style="font-family:var(--font)">${r.target}</td>
-    <td><span class="gpill g-${r.grade}">${r.grade}</span></td>
-    <td>${r.confirmed??(r.crit+r.high+r.med+r.low)}</td><td>${r.cov}</td><td>$${r.cost.toFixed(2)}</td></tr>`).join('')
+    <td>${esc(r.run)}</td><td style="font-family:var(--font)">${esc(r.target)}</td>
+    <td><span class="gpill g-${esc(r.grade)}">${esc(r.grade)}</span></td>
+    <td>${r.confirmed??(r.crit+r.high+r.med+r.low)}</td><td>${esc(r.cov)}</td><td>$${(+r.cost||0).toFixed(2)}</td></tr>`).join('')
     || '<tr><td colspan="6" class="hint" style="padding:16px 18px">No scans recorded yet — launch a scan to populate history.</td></tr>';
   $$('#histrows tr.hrow').forEach(tr=>{ const open=()=>openDetail(HIST_ROWS[+tr.dataset.idx]);
     tr.onclick=open; tr.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();open();} }; });
@@ -805,6 +852,8 @@ function renderHistory(){
 
 /* ---------- history drill-down ---------- */
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Only allow http(s) hrefs — blocks javascript:/data: scheme injection in any server-sourced link (defense-in-depth).
+const safeHref=u=>/^https?:\/\//i.test(String(u||''))?String(u):'#';
 const CARET='<svg class="caret" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 const pct=v=>Math.round((+v||0)*100)+'%';
 /* Build the expandable proof panel for one confirmed finding. Normalises the two shapes we see: the full report finding
@@ -843,7 +892,7 @@ function findingProofHTML(f){
     parts.push(`<div><div class="pl">Remediation${rem.owasp?' · OWASP '+esc(rem.owasp):''}</div>`
       +(rem.summary?`<p class="remsum">${esc(rem.summary)}</p>`:'')
       +(steps?`<ul class="remsteps">${steps}</ul>`:'')
-      +(rem.reference?`<a class="remref" href="${esc(rem.reference)}" target="_blank" rel="noopener noreferrer">OWASP LLM Top 10 ↗</a>`:'')
+      +(rem.reference?`<a class="remref" href="${esc(safeHref(rem.reference))}" target="_blank" rel="noopener noreferrer">OWASP LLM Top 10 ↗</a>`:'')
       +`</div>`); }
   return `<div class="proof">${parts.join('')}</div>`;
 }
@@ -863,11 +912,26 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('.histexpb
   }catch(ex){ if(err) err.textContent='could not export ('+ex.message+')'; }
   finally{ btns.forEach(x=>x.disabled=false); }
 });
-function closeDetail(){ $('#detail').hidden=true; }
+let _detReturn=null;   // element focus returns to when the dialog closes (focus restoration)
+function closeDetail(){ $('#detail').hidden=true;
+  if(_detReturn&&_detReturn.focus){ try{_detReturn.focus()}catch(e){} } _detReturn=null; }
+// Focus trap: keep Tab/Shift+Tab cycling inside the dialog so keyboard/screen-reader users aren't stranded behind it.
+$('#detail').addEventListener('keydown',e=>{
+  if(e.key!=='Tab' || $('#detail').hidden) return;
+  const sheet=$('#detail .sheet'); if(!sheet) return;
+  const f=[...sheet.querySelectorAll('a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>el.offsetParent!==null);
+  if(!f.length) return;
+  const first=f[0], last=f[f.length-1];
+  if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+});
 async function openDetail(row){
   if(!row) return;
+  _detReturn=document.activeElement;   // remember the triggering row, to restore focus on close
   $('#detTitle').textContent='Scan '+(row.run||'');
   const body=$('#detBody'); $('#detail').hidden=false;
+  const cb=$('#detClose'); if(cb) cb.focus();   // move focus into the dialog on open
   // a finished scan in the store is re-exportable (SARIF for GitHub, MD/HTML to share) — same writers as the live run
   const exp = (row.rid && API.live) ? `<div class="exportbar histexport" style="margin-left:auto">
       <span class="mono" style="font-size:11px;color:var(--ink-3)">export</span>

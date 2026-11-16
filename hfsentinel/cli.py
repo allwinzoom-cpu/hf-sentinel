@@ -5,7 +5,7 @@ control characters so attacker-influenced text cannot drive the operator's termi
 
 Exit codes (stable): 0 ok · 1 internal error · 2 usage error · 3 refused by scope · 4 invalid input ·
 5 not supported in this build · 6 Hugging Face Hub unavailable · 10 a confirmed finding meets --fail-on ·
-11 an observed attack-success regression meets --fail-on-regression.
+11 an observed attack-success regression meets --fail-on-regression, or that gate could not be evaluated (fails closed).
 """
 from __future__ import annotations
 
@@ -633,6 +633,12 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
              adaptive: bool = False, emit_events: bool = False, db_path: str | Path | None = None) -> None:
     """Live scan: staged campaign (scope → recon → plan → breadth → confirm → report)."""
     c = res.controls
+    # Fail fast on a misconfigured regression gate: --fail-on-regression needs a store to compare against, so without
+    # --db it can never be evaluated. Catch it BEFORE sending any traffic (a config error), so it can't be masked by the
+    # findings gate once a scan has run. The store-write-failure case is still handled after record (it needs the scan).
+    if c.output.fail_on_regression is not None and not db_path:
+        raise _fail("--fail-on-regression could not be evaluated (needs a scan store (--db)); failing closed",
+                    EXIT_REGRESSION)
     started = dt.datetime.now(dt.timezone.utc)
     run_id = new_run_id(started)
     profile = _run_recon(t, c)
@@ -806,18 +812,24 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
                    f"{f.asr_ci95[1]:.0%}) {_clean(f.technique, 60)}")
     for p in paths:
         typer.echo(f"report    {_clean(p, 200)}")
+    recorded = False
     if db_path:  # capture every scan (summary + per-technique coverage + confirmed findings) to the durable store
         try:
             from hfsentinel import store
             store.record_scan(db_path, report_doc)
+            recorded = True
             typer.echo(f"store     recorded scan {run_id} to {_clean(str(db_path), 160)}")
         except (OSError, sqlite3.Error) as e:
             typer.echo(f"store     could not record scan (continuing): {_clean(str(e), 120)}")
-    # Regression gate (opt-in): compute + report BEFORE the findings gate so the behavioural delta always surfaces, but
-    # raise AFTER it, so a confirmed finding at/above --fail-on keeps exit-code precedence over a regression.
-    regression_fail = False
-    if c.output.fail_on_regression is not None:
-        if db_path:
+    # Regression gate (opt-in). Compute + report the behavioural delta BEFORE the findings gate so it always surfaces,
+    # but raise AFTER it, so a confirmed finding at/above --fail-on keeps exit-code precedence. FAIL CLOSED: if the gate
+    # was requested but cannot be evaluated (no store, or the store write failed), the build must NOT silently pass —
+    # a CI gate that could not run is a failure, not a green. A first scan (no baseline) is a legitimate pass.
+    reg_fire = reg_unevaluable = None
+    if c.output.fail_on_regression is not None:   # (the no-db case already failed closed before the scan ran)
+        if not recorded:
+            reg_unevaluable = "scan store write failed"
+        else:
             from hfsentinel import store
             delta = _regression_delta(store.scan_comparison(db_path, run_id))
             if delta is None:
@@ -825,16 +837,16 @@ def _execute(t: ResolvedTarget, res: Resolved, attestation: Attestation | None, 
             else:
                 typer.echo(f"regression  overall attack-success {delta:+.0%} vs. this target's previous scan "
                            "(observed behavioural delta; serving path not verified identical — LSCAN-003/009)")
-                regression_fail = delta >= c.output.fail_on_regression
-        else:
-            typer.echo("regression  --fail-on-regression needs a scan store (--db); gate skipped")
+                reg_fire = delta >= c.output.fail_on_regression
 
     fail_on = c.output.fail_on.capitalize()
     if any(at_least(f.severity, fail_on) for f in report_doc.findings):
         raise _fail(f"confirmed finding at or above --fail-on {c.output.fail_on}", EXIT_FINDINGS)
-    if regression_fail:
+    if reg_fire:
         raise _fail(f"observed attack-success regression >= --fail-on-regression "
                     f"{c.output.fail_on_regression:.0%}", EXIT_REGRESSION)
+    if reg_unevaluable:
+        raise _fail(f"--fail-on-regression could not be evaluated ({reg_unevaluable}); failing closed", EXIT_REGRESSION)
 
 
 def _authorize_live(ref: str, verified, via: Via):
@@ -894,7 +906,8 @@ def diff(target: Annotated[str, typer.Argument(help="Target URI (the model under
          trials: Annotated[int | None, typer.Option("--trials", help="Sampled trials per technique.")] = None,
          out: Annotated[Path | None, typer.Option("--out", help="Write the diff table to this directory.")] = None,
          ) -> None:
-    """Compare a target against a --base model: per-category ΔASR + over-refusal, for alignment-removal detection.
+    """Compare a target against a --base model: per-category ΔASR + over-refusal — a behavioural attackability-delta
+    comparison (LSCAN-003), i.e. observed higher/lower attack success, never an alignment-removal claim.
 
     Both targets are live, so both must be authorized by the signed --scope (fail-closed). Sends traffic to each."""
     from hfsentinel.report.diff import diff_reports, to_table
@@ -1016,8 +1029,20 @@ def history(db: Annotated[Path | None, typer.Option("--db", help="Scan store wri
             run: Annotated[str | None, typer.Option("--run", help="Show one scan's coverage and findings by run id.")]
             = None,
             target: Annotated[str | None, typer.Option("--target", help="Only scans of this target URI.")] = None,
-            limit: Annotated[int, typer.Option("--limit", help="How many recent scans to list.")] = 20) -> None:
-    """Read back past scans from the SQLite store: a recent-scans table, or one scan's coverage + findings with --run."""
+            limit: Annotated[int, typer.Option("--limit", help="How many recent scans to list.")] = 20,
+            compare: Annotated[str | None, typer.Option("--compare", help="Behavioural regression of a run vs. this "
+                               "target's previous scan (observed ΔASR; LSCAN-003/009).")] = None,
+            trend: Annotated[str | None, typer.Option("--trend", help="A target's attack-success trend across its "
+                             "recent scans (observed behavioural; LSCAN-003/009).")] = None,
+            export: Annotated[str | None, typer.Option("--export", help="Re-export a past scan's report by run id.")]
+            = None,
+            fmt: Annotated[str, typer.Option("--format", help="Export format for --export: json|sarif|md|html.")]
+            = "json",
+            out: Annotated[Path | None, typer.Option("--out", help="Directory for --export (default: stdout).")]
+            = None) -> None:
+    """Read back past scans from the SQLite store: a recent-scans table, one scan's coverage + findings (--run), a
+    behavioural regression vs. the previous scan (--compare), a target's attack-success trend (--trend), or re-export a
+    past scan's report in any format (--export [--format] [--out]) — the same capabilities the API/console expose."""
     from hfsentinel import store
     db_path = db or os.environ.get("HFSENTINEL_DB")
     if not db_path:
@@ -1044,6 +1069,69 @@ def history(db: Annotated[Path | None, typer.Option("--db", help="Scan store wri
                 ci = f"{f['ci_low']:.0%}–{f['ci_high']:.0%}" if f["ci_low"] is not None else ""
                 typer.echo(f"finding   {f['catalog_id']:<4} {f['severity']:<9} ASR {f['asr']:.0%} ({ci}) "
                            f"{_clean(f['technique'] or '', 50)}")
+            return
+        if compare:
+            cmp = store.scan_comparison(db_path, compare)
+            if cmp is None:
+                raise _fail(f"run id not found in the store: {_clean(compare, 80)}", EXIT_INPUT)
+            tref = _clean(cmp["target_ref"], 80)
+            if not cmp.get("base"):
+                typer.echo(f"compare   {tref}: earliest scan of this target — nothing earlier to compare")
+                return
+            typer.echo(f"compare   {tref}  (observed behavioural delta; serving path not verified identical — "
+                       "LSCAN-003/009)")
+            typer.echo(f"grade     {cmp['base']['grade'] or '-'} -> {cmp['target']['grade'] or '-'} · overall "
+                       f"ΔASR {cmp['overall_delta_asr']:+.0%}")
+            for r in cmp["categories"]:
+                typer.echo(f"  {r['category']:<2} {r['base_asr']:>5.0%} -> {r['target_asr']:>5.0%}  Δ{r['delta_asr']:+.0%}")
+            for label, k in (("new", "findings_new"), ("resolved", "findings_resolved"),
+                             ("persistent", "findings_persistent")):
+                ids = [f["catalog_id"] for f in cmp.get(k, [])]
+                if ids:
+                    typer.echo(f"  {label:<10} {', '.join(ids)}")
+            return
+        if trend:
+            t = store.scan_trend(db_path, trend, limit=limit)
+            pts = t["points"]
+            if not pts:
+                typer.echo(f"trend     {_clean(trend, 80)}: no scans recorded for this target")
+                return
+            typer.echo(f"trend     {_clean(t['target_ref'], 80)} · {len(pts)} scans (oldest->newest; observed "
+                       "behavioural, LSCAN-003/009)")
+            typer.echo(f"{'STARTED':<21} {'GRADE':<6} {'OVERALL ASR':>12} {'CONFIRMED':>10}")
+            for p in pts:
+                typer.echo(f"{_clean(str(p['started'] or ''), 20):<21} {(p['grade'] or '-'):<6} "
+                           f"{p['overall_asr']:>11.0%} {p['confirmed']:>10}")
+            return
+        if export:
+            rep = store.scan_report(db_path, export)
+            if rep is None:
+                if store.scan_detail(db_path, export) is None:
+                    raise _fail(f"run id not found in the store: {_clean(export, 80)}", EXIT_INPUT)
+                raise _fail("no stored report for this scan (recorded before report capture)", EXIT_INPUT)
+            ff = fmt.lower()
+            if ff not in ("json", "sarif", "md", "html"):
+                raise _fail("unknown --format; choose json|sarif|md|html", EXIT_USAGE)
+            if ff == "json":
+                text = json.dumps(rep, indent=2)   # the stored report dict verbatim
+            else:
+                from hfsentinel.report.build import Report
+                try:
+                    report_obj = Report.model_validate(rep)
+                except Exception:  # noqa: BLE001 - any malformed stored report should fail cleanly, not crash
+                    raise _fail("stored report could not be rendered", EXIT_INPUT) from None
+                text = {"sarif": render.to_sarif, "md": render.to_markdown, "html": render.to_html}[ff](report_obj)
+            if out:
+                p = Path(out).expanduser()
+                p.mkdir(mode=0o700, parents=True, exist_ok=True)
+                safe = "".join(ch if (ch.isalnum() or ch in "._-") else "_" for ch in export)[:80] or "report"
+                fpath = p / f"hfsentinel-{safe}.{ff}"
+                fd = os.open(str(fpath), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)  # evidence excerpts → owner-only
+                with os.fdopen(fd, "w") as fh:
+                    fh.write(text)
+                typer.echo(f"export    wrote {_clean(str(fpath), 160)}")
+            else:
+                typer.echo(text)
             return
         scans = store.recent_scans(db_path, limit=limit, target=target)
         if not scans:

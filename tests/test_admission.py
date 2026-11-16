@@ -89,3 +89,42 @@ def test_api_sheds_load_with_429_when_queue_is_full(monkeypatch):
             break
         time.sleep(0.01)
     assert client.post("/scans", json=body, headers=h).status_code == 202   # accepted again once drained
+
+
+@pytest.mark.skipif(not api.FASTAPI_AVAILABLE, reason="FastAPI not installed (optional `api` extra)")
+def test_graceful_shutdown_cancels_inflight_and_finalizes(monkeypatch):
+    # On shutdown (TestClient context exit → lifespan shutdown) an in-flight scan must be signalled to stop and finalize
+    # a partial report — not abandoned mid-request. The lifespan waits for the pool to drain, so after the `with` block
+    # the job has settled to "cancelled".
+    from fastapi.testclient import TestClient
+
+    saw_cancel = threading.Event()
+
+    def fake_scan(target, **kwargs):
+        cancel = kwargs.get("cancel")
+        for _ in range(2000):                        # run until shutdown signals cancellation
+            if cancel and cancel():
+                saw_cancel.set()
+                break
+            time.sleep(0.01)
+        was_cancelled = bool(cancel and cancel())
+
+        class _R:
+            cancelled = was_cancelled
+            def to_dict(self):
+                return {"run": {"run_id": "x"}, "grade": {"overall": "A"}, "findings": []}
+        return _R()
+
+    monkeypatch.setattr(sdk, "scan", fake_scan)
+    app = api.create_app(api_keys=["secret"], max_concurrent=1)
+    h = {"X-API-Key": "secret"}
+    with TestClient(app) as client:
+        job = client.post("/scans", json={"target": "openai+http://127.0.0.1:1/v1#m"}, headers=h).json()["job_id"]
+        for _ in range(500):                         # wait until the scan is actually running
+            if client.get(f"/scans/{job}", headers=h).json()["status"] == "running":
+                break
+            time.sleep(0.01)
+    # context exited → graceful drain ran
+    assert saw_cancel.is_set()                       # the in-flight scan was told to stop
+    settled = app.state.job_store.get(job)
+    assert settled is not None and settled.status == "cancelled"   # finalized, not abandoned

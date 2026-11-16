@@ -16,6 +16,7 @@ only :func:`create_app` needs the optional ``api`` extra.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as dt
 import json
 import os
@@ -166,6 +167,11 @@ class JobStore:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def nonterminal(self) -> list[Job]:
+        """Snapshot of queued+running jobs (for graceful shutdown: signal each to stop at its next boundary)."""
+        with self._lock:
+            return [j for j in self._jobs.values() if j.status not in self.TERMINAL]
+
     def active(self) -> int:
         with self._lock:
             return self._active
@@ -236,7 +242,19 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
     store = JobStore(max_jobs=max_jobs)
     limiter = RateLimiter(rate_per_min)
     pool = ThreadPoolExecutor(max_workers=max(1, max_concurrent), thread_name_prefix="hfs-scan")
-    app = FastAPI(title="HF-Sentinel API", version="0.1.0",
+
+    @contextlib.asynccontextmanager
+    async def _lifespan(_app):
+        yield
+        # Graceful shutdown (SIGTERM / uvicorn stop): signal every in-flight scan to stop at its next technique/stage
+        # boundary — each then finalizes and stores a *partial* report instead of being killed mid-request — drop any
+        # queued-but-unstarted scans, and wait for the running ones to drain. Reuses the cooperative-cancel machinery.
+        for job in store.nonterminal():
+            if job.cancel_event is not None:
+                job.cancel_event.set()
+        await asyncio.to_thread(pool.shutdown, wait=True, cancel_futures=True)
+
+    app = FastAPI(title="HF-Sentinel API", version="0.1.0", lifespan=_lifespan,
                   description="Dynamic black-box LLM security scanner — async job API.")
 
     @app.middleware("http")

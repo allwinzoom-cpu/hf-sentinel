@@ -316,3 +316,43 @@ def test_api_history_compare_endpoint(tmp_path):
     assert client.get("/history/R-base/compare", headers=h).json()["base"] is None   # earliest scan: no base
     assert client.get("/history/nope/compare", headers=h).status_code == 404
     assert client.get("/history/R-tgt/compare").status_code == 401                   # auth required
+
+
+def test_scan_report_round_trips_the_full_report(tmp_path):
+    # the store keeps the full assembled report so a past scan is re-exportable; unknown run → None
+    db = tmp_path / "scans.db"
+    store.record_scan(db, REPORT)
+    got = store.scan_report(db, "20260101T000000Z-abcd")
+    assert got is not None and got["run"]["run_id"] == "20260101T000000Z-abcd"
+    assert got["findings"][0]["catalog_id"] == "C2"           # the full report, not the slim detail
+    assert store.scan_report(db, "no-such-run") is None
+
+
+def test_scan_report_absent_for_pre_capture_store(tmp_path):
+    # an older store has the scan rows but no report blob (connect() adds the empty reports table) → None, not an error
+    db = tmp_path / "old.db"
+    old = sqlite3.connect(db)
+    old.executescript(store.SCHEMA)
+    old.execute("DROP TABLE reports")                         # simulate a build before report capture existed
+    old.commit()
+    old.close()
+    store.record_scan(db, REPORT)                             # re-records summary/coverage/findings …
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM reports WHERE run_id='20260101T000000Z-abcd'")   # … but drop the blob to mimic old data
+    conn.commit()
+    conn.close()
+    assert store.scan_report(db, "20260101T000000Z-abcd") is None
+    assert store.scan_detail(db, "20260101T000000Z-abcd") is not None          # slim detail still available
+
+
+def test_prune_also_removes_stored_reports(tmp_path):
+    import copy
+    db = tmp_path / "scans.db"
+    for i in range(3):
+        r = copy.deepcopy(REPORT)
+        r["run"]["run_id"] = f"run-{i}"
+        r["run"]["started_at"] = f"2026-01-0{i + 1}T00:00:00+00:00"
+        store.record_scan(db, r)
+    store.prune(db, keep=1)
+    assert store.scan_report(db, "run-0") is None and store.scan_report(db, "run-1") is None
+    assert store.scan_report(db, "run-2") is not None        # the kept scan still has its report

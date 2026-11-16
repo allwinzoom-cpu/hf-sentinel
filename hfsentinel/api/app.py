@@ -348,6 +348,25 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
                        "md": ("text/markdown; charset=utf-8", "md"),
                        "html": ("text/html; charset=utf-8", "html")}
 
+    def _report_response(report_dict: dict, fmt: str, fallback_id: str) -> Response:
+        """Render a stored report dict to the chosen format and wrap it as a download — shared by the live-job and the
+        history export endpoints so both use the same canonical, output-encoded writers and the same safe filename."""
+        from hfsentinel.report import render
+        from hfsentinel.report.build import Report
+        if fmt == "json":
+            body = json.dumps(report_dict, indent=2)   # the stored report dict verbatim; no re-render needed
+        else:
+            try:
+                report = Report.model_validate(report_dict)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail="stored report could not be rendered") from e
+            body = {"sarif": render.to_sarif, "md": render.to_markdown, "html": render.to_html}[fmt](report)
+        media_type, ext = _REPORT_FORMATS[fmt]
+        run_id = (report_dict.get("run") or {}).get("run_id") or fallback_id
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(run_id))[:80]   # filename is attacker-influenced; keep it inert
+        return Response(content=body, media_type=media_type,
+                        headers={"Content-Disposition": f'attachment; filename="hfsentinel-{safe}.{ext}"'})
+
     @app.get("/scans/{job_id}/report")
     async def download_report(job_id: str, format: str = Query(default="json"),
                               _key: str = Depends(require_key)) -> Response:
@@ -362,23 +381,7 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
             raise HTTPException(status_code=404, detail="unknown job id")
         if job.status not in ("completed", "cancelled") or not job.result:
             raise HTTPException(status_code=409, detail="report not available until the scan finishes")
-
-        from hfsentinel.report import render
-        from hfsentinel.report.build import Report
-        if fmt == "json":
-            body = json.dumps(job.result, indent=2)   # the stored report dict verbatim; no re-render needed
-        else:
-            try:
-                report = Report.model_validate(job.result)
-            except Exception as e:
-                raise HTTPException(status_code=422, detail="stored report could not be rendered") from e
-            body = {"sarif": render.to_sarif, "md": render.to_markdown, "html": render.to_html}[fmt](report)
-
-        media_type, ext = _REPORT_FORMATS[fmt]
-        run_id = (job.result.get("run") or {}).get("run_id") or job.id
-        safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(run_id))[:80]   # filename is attacker-influenced; keep it inert
-        return Response(content=body, media_type=media_type,
-                        headers={"Content-Disposition": f'attachment; filename="hfsentinel-{safe}.{ext}"'})
+        return _report_response(job.result, fmt, job.id)
 
     @app.delete("/scans/{job_id}")
     async def cancel_scan(job_id: str, _key: str = Depends(require_key)) -> dict:
@@ -462,6 +465,25 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
         if cmp is None:
             raise HTTPException(status_code=404, detail="unknown run id")
         return cmp
+
+    @app.get("/history/{run_id}/report")
+    async def download_history_report(run_id: str, format: str = Query(default="json"),
+                                      _key: str = Depends(require_key)) -> Response:
+        """Re-export a PAST scan's report (JSON / SARIF 2.1.0 / Markdown / HTML) from the scan store, rendered by the
+        same canonical writers as the live download — so an operator can pull last week's SARIF for GitHub code scanning
+        or re-share the HTML without re-running the scan. 404 if the run is unknown; 409 if the scan predates report
+        capture (an older store kept its summary/coverage/findings but no full report)."""
+        fmt = format.lower()
+        if fmt not in _REPORT_FORMATS:
+            raise HTTPException(status_code=400, detail=f"unknown format; choose one of {sorted(_REPORT_FORMATS)}")
+        if not db_path:
+            raise HTTPException(status_code=503, detail="no scan store configured on the server")
+        report_dict = scanstore.scan_report(db_path, run_id)
+        if report_dict is None:
+            if scanstore.scan_detail(db_path, run_id) is None:
+                raise HTTPException(status_code=404, detail="unknown run id")
+            raise HTTPException(status_code=409, detail="no stored report for this scan (recorded before report capture)")
+        return _report_response(report_dict, fmt, run_id)
 
     app.state.job_store = store          # exposed for tests / introspection
     app.state.rate_limiter = limiter

@@ -22,7 +22,8 @@ hfsentinel serve --db scans.db           # console at http://127.0.0.1:8000/  (-
 ```
 
 The console — a launch panel (rule packs, categories, profile, knobs), a **live streamed run**, and a history dashboard
-with per-scan **drill-down** and **regression comparison** (a scan vs. the previous scan of the same target) — drives the
+with per-scan **drill-down**, an **attack-success trend** (overall ASR across a target's recent scans) and **regression
+comparison** (a scan vs. the previous scan of the same target) — drives the
 same API, same-origin. Every confirmed finding (live card or history drill-down) **expands to its proof**: the redacted
 evidence excerpt the oracle matched, the statistical confidence (ASR with 95% CI, the baseline ASR and the **lift** over
 it — so the conservative confirm gate is visible, not implicit), the oracle and OWASP/ATLAS mapping, and the reproduction
@@ -41,6 +42,9 @@ scanning renders *what to do about it*, not just what broke.
   never appears in a URL or access log
 - `GET /history`, `GET /history/{run_id}` — the scan-event store: summary, per-technique coverage, and each confirmed
   finding **with its proof** (redacted excerpt, baseline ASR + lift, oracle, OWASP/ATLAS) for the console drill-down
+- `GET /history/trend?target=...&limit=N` — **trend**: a target's per-category and overall attack-success rate across
+  its recent scans, oldest→newest, so the drill-down charts whether it is drifting more or less attackable over time.
+  Same observed-behavioural framing as compare (LSCAN-003/009); empty series (not 404) for a target with no scans
 - `GET /history/{run_id}/compare` — **regression**: the behavioural attack-success delta vs. the most recent earlier
   scan of the same target (per-category ΔASR, grade change, findings new/resolved/persistent). The console shows it atop
   the drill-down. Observed delta only (LSCAN-003) — never an alignment-removal claim, and the serving path is not

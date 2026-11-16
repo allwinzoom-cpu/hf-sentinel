@@ -318,6 +318,60 @@ def test_api_history_compare_endpoint(tmp_path):
     assert client.get("/history/R-tgt/compare").status_code == 401                   # auth required
 
 
+def test_scan_trend_is_an_ordered_per_target_asr_series(tmp_path):
+    db = tmp_path / "scans.db"
+    # three scans of one target, recorded out of time order; a fourth scan of a DIFFERENT target must not leak in
+    store.record_scan(db, _cmp_report("R2", "2026-11-05T00:00:00+00:00", "D",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.4, "trials": 5, "hits": 2,
+          "asr_ci95": [0.1, 0.8], "errors": 0, "severity": "Medium"}], []))
+    store.record_scan(db, _cmp_report("R1", "2026-11-01T00:00:00+00:00", "C",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.2, "trials": 5, "hits": 1,
+          "asr_ci95": [0.0, 0.5], "errors": 0, "severity": "Low"},
+         {"catalog_id": "E2", "category": "E", "disposition": "skip", "asr": None, "trials": 0, "hits": 0,
+          "asr_ci95": None, "errors": 0, "severity": None}], []))  # skipped technique must not count toward ASR
+    store.record_scan(db, _cmp_report("R3", "2026-11-09T00:00:00+00:00", "F",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.8, "trials": 5, "hits": 4,
+          "asr_ci95": [0.4, 1.0], "errors": 0, "severity": "High"}], []))
+    other = _cmp_report("R-other", "2026-11-20T00:00:00+00:00", "A", [], [])
+    other["target"]["ref"] = "openai+http://y#m"
+    store.record_scan(db, other)
+
+    t = store.scan_trend(db, "openai+http://x#m")
+    assert t["target_ref"] == "openai+http://x#m"
+    assert [p["run_id"] for p in t["points"]] == ["R1", "R2", "R3"]      # oldest→newest, other target excluded
+    assert [p["overall_asr"] for p in t["points"]] == [0.2, 0.4, 0.8]    # mean of SCORED techniques only (skip ignored)
+    assert t["points"][0]["category_asr"] == {"A": 0.2}                  # per-category series present
+    assert [p["grade"] for p in t["points"]] == ["C", "D", "F"]
+    assert "not an alignment" in t["behavioural_note"]                   # agnostic/LSCAN framing preserved
+    # a target with no scans is an empty (not error) series; limit bounds the window to the most recent N, still ordered
+    assert store.scan_trend(db, "openai+http://nope#m")["points"] == []
+    assert [p["run_id"] for p in store.scan_trend(db, "openai+http://x#m", limit=2)["points"]] == ["R2", "R3"]
+
+
+@pytest.mark.skipif(not api.FASTAPI_AVAILABLE, reason="FastAPI not installed (optional `api` extra)")
+def test_api_history_trend_endpoint(tmp_path):
+    from fastapi.testclient import TestClient
+    db = str(tmp_path / "scans.db")
+    store.record_scan(db, _cmp_report("R1", "2026-11-01T00:00:00+00:00", "C",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.2, "trials": 5, "hits": 1,
+          "asr_ci95": [0.0, 0.5], "errors": 0, "severity": "Low"}], []))
+    store.record_scan(db, _cmp_report("R2", "2026-11-10T00:00:00+00:00", "F",
+        [{"catalog_id": "A1", "category": "A", "disposition": "run", "asr": 0.9, "trials": 5, "hits": 5,
+          "asr_ci95": [0.5, 1.0], "errors": 0, "severity": "Critical"}], []))
+    client = TestClient(api.create_app(api_keys=["secret"], db_path=db))
+    h = {"X-API-Key": "secret"}
+    r = client.get("/history/trend", params={"target": "openai+http://x#m"}, headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert [p["run_id"] for p in body["points"]] == ["R1", "R2"]         # ordered oldest→newest
+    assert body["points"][-1]["overall_asr"] == 0.9
+    # "/history/trend" must resolve to the trend route, not be captured by "/history/{run_id}"
+    assert "points" in body and "scan" not in body
+    assert client.get("/history/trend", params={"target": "unknown#m"}, headers=h).json()["points"] == []  # empty, not 404
+    assert client.get("/history/trend", headers=h).status_code == 422   # target is required (query param)
+    assert client.get("/history/trend", params={"target": "x"}).status_code == 401  # auth required
+
+
 def test_scan_report_round_trips_the_full_report(tmp_path):
     # the store keeps the full assembled report so a past scan is re-exportable; unknown run → None
     db = tmp_path / "scans.db"

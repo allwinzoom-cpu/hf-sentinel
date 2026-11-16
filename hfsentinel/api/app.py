@@ -448,6 +448,17 @@ def create_app(*, api_keys: list[str] | None = None, scope_file: str | None = No
             raise HTTPException(status_code=503, detail="no scan store configured on the server")
         return {"scans": scanstore.recent_scans(db_path, limit=max(1, min(limit, 200)), target=target)}
 
+    @app.get("/history/trend")
+    async def history_trend(target: str, limit: int = 20, _key: str = Depends(require_key)) -> dict:
+        """A target's per-category and overall ASR across its recent scans (oldest→newest) for the regression-trend
+        chart. Observed behavioural signal only (LSCAN-003/009). ``target`` is required; ``points`` is empty if the
+        target has no recorded scans. Defined before ``/history/{run_id}`` so the static path wins the route match."""
+        if not db_path:
+            raise HTTPException(status_code=503, detail="no scan store configured on the server")
+        if not target.strip():
+            raise HTTPException(status_code=400, detail="target is required")
+        return scanstore.scan_trend(db_path, target, limit=max(1, min(limit, 200)))
+
     @app.get("/history/{run_id}")
     async def history_detail(run_id: str, _key: str = Depends(require_key)) -> dict:
         if not db_path:

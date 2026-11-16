@@ -284,6 +284,21 @@ tbody tr.hrow:hover td:first-child{color:var(--accent-2)}
 .cmpnew{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .cmpnew .pl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;width:100%}
 .cmpnote{margin:2px 0 0}
+/* attack-success trend across a target's recent scans (one series, one axis) */
+.trendwrap{padding:6px 18px 0}
+.tsvg{width:100%;height:auto;display:block;overflow:visible;font-family:var(--mono)}
+.tsvg .grid{stroke:var(--border);stroke-width:1;vector-effect:non-scaling-stroke}
+.tsvg .tline{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.tsvg .tfill{fill:var(--accent-soft);opacity:.5}
+.tsvg .tdot{stroke:var(--surface);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.tsvg .glab,.tsvg .xlab{fill:var(--ink-3);font-size:8px}
+.tsvg .vlab{fill:var(--ink-2);font-size:9px;font-weight:700}
+.trendmeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 18px 0}
+.trendmeta .tchip{font:600 11px var(--mono);padding:2px 8px;border-radius:999px;border:1px solid var(--border)}
+.trendmeta .tchip.worse{background:var(--crit-soft);color:var(--crit);border-color:var(--crit)}
+.trendmeta .tchip.better{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.trendmeta .tchip.flat{color:var(--ink-3)}
+.trnote{margin:6px 18px 0}
 
 @media (max-width:860px){
   .launch,.runcols,.histgrid{grid-template-columns:1fr}
@@ -858,12 +873,19 @@ async function openDetail(row){
     try{ const key=$('#apikey').value.trim(); const h=key?{'X-API-Key':key}:{};
       const r=await fetch(API.base+'/history/'+encodeURIComponent(row.rid),{headers:h});
       if(!r.ok) throw new Error('HTTP '+r.status);
-      body.innerHTML=head+renderDetailBody(await r.json());
+      const detail=await r.json(); body.innerHTML=head+renderDetailBody(detail);
+      const anchor=body.querySelector('.detsub');  // the Coverage header — insert trend/regression above it, in order
+      const targetRef=(detail.scan&&detail.scan.target_ref)||'';
+      // trend across this target's recent scans — secondary, best-effort, never blocks the detail view
+      if(anchor && targetRef){
+        try{ const rt=await fetch(API.base+'/history/trend?target='+encodeURIComponent(targetRef)+'&limit=12',{headers:h});
+          if(rt.ok){ const html=renderTrend(await rt.json()); if(html) anchor.insertAdjacentHTML('beforebegin', html); } }
+        catch(_){/* trend is best-effort */}
+      }
       // regression vs. the previous scan of this target — secondary, so it never blocks the detail view
       try{ const rc=await fetch(API.base+'/history/'+encodeURIComponent(row.rid)+'/compare',{headers:h});
         if(rc.ok){ const c=await rc.json();
-          if(c && c.base){ const sub=body.querySelector('.detsub');
-            if(sub) sub.insertAdjacentHTML('beforebegin', renderComparison(c)); } }
+          if(c && c.base && anchor) anchor.insertAdjacentHTML('beforebegin', renderComparison(c)); }
       }catch(_){/* comparison is best-effort */}
     }catch(e){ body.innerHTML=head+`<p class="hint" style="padding:16px 18px">Could not load detail (${esc(e.message)}).</p>`; }
   } else {
@@ -874,6 +896,41 @@ async function openDetail(row){
       <p class="note" style="margin-top:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
       Per-technique coverage &amp; findings load from the live service (connect an API key).</p></div>`;
   }
+}
+/* Attack-success trend across a target's recent scans (oldest→newest). One series (overall ASR), one axis — a rising
+   line means later scans elicited more successful attacks (observed behavioural signal, LSCAN-003/009), never an
+   alignment claim. Grade-tinted markers carry per-scan detail on hover; identity is text (grade/date), never colour
+   alone. Returns '' for <2 points, since a single scan is not a trend. Every interpolated value is escaped. */
+const GRADE_COL={A:'var(--ok)',B:'var(--ok)',C:'var(--warn)',D:'var(--serious)',E:'var(--crit)',F:'var(--crit)'};
+function renderTrend(t){
+  const pts=(t&&t.points)||[]; if(pts.length<2) return '';
+  const W=320,H=96,L=22,R=40,T=12,B=20, n=pts.length;
+  const x=i=>L+(n<2?0:i*(W-L-R)/(n-1)), asr=p=>Math.max(0,Math.min(1,+p.overall_asr||0)), y=v=>T+(1-v)*(H-T-B);
+  const gcol=g=>GRADE_COL[String(g||'').toUpperCase()]||'var(--ink-3)';
+  const grid=[0,0.5,1].map(v=>`<line class="grid" x1="${L}" y1="${y(v).toFixed(1)}" x2="${W-R}" y2="${y(v).toFixed(1)}"/>`
+    +`<text class="glab" x="${L-4}" y="${(y(v)+3).toFixed(1)}" text-anchor="end">${Math.round(v*100)}</text>`).join('');
+  const poly=pts.map((p,i)=>`${x(i).toFixed(1)},${y(asr(p)).toFixed(1)}`).join(' ');
+  const area=`${L.toFixed(1)},${y(0).toFixed(1)} ${poly} ${(W-R).toFixed(1)},${y(0).toFixed(1)}`;
+  const dots=pts.map((p,i)=>{ const dt=(p.started||'').slice(0,10);
+    const tip=`${dt} · grade ${p.grade||'?'} · ASR ${Math.round(asr(p)*100)}% · ${p.confirmed||0} confirmed`;
+    return `<circle class="tdot" cx="${x(i).toFixed(1)}" cy="${y(asr(p)).toFixed(1)}" r="3.2" fill="${gcol(p.grade)}">`
+      +`<title>${esc(tip)}</title></circle>`;}).join('');
+  const last=pts[n-1], lx=x(n-1), ly=y(asr(last));
+  const vlab=`<text class="vlab" x="${(lx+6).toFixed(1)}" y="${(ly+3).toFixed(1)}">${Math.round(asr(last)*100)}%</text>`;
+  const xlabs=`<text class="xlab" x="${L}" y="${H-6}" text-anchor="start">${esc((pts[0].started||'').slice(0,10))}</text>`
+    +`<text class="xlab" x="${W-R}" y="${H-6}" text-anchor="end">${esc((last.started||'').slice(0,10))}</text>`;
+  const svg=`<svg class="tsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Overall attack-success rate across the`
+    +` last ${n} scans of this target">${grid}<polygon class="tfill" points="${area}"/>`
+    +`<polyline class="tline" points="${poly}"/>${dots}${vlab}${xlabs}</svg>`;
+  const d=asr(last)-asr(pts[0]), dir=d>0.0005?'worse':(d<-0.0005?'better':'flat');
+  const sgn=(d>0?'+':'')+Math.round(d*100)+'%';
+  return `<div class="detsub">Attack-success trend · ${n} scans</div>
+    <div class="trendwrap">${svg}</div>
+    <div class="trendmeta">
+      <span class="tchip ${dir}">${dir==='flat'?'~unchanged':sgn+' ASR'} over ${n} scans</span>
+      <span class="tchip">latest <b>${Math.round(asr(last)*100)}%</b> · grade ${esc(last.grade||'?')}</span>
+    </div>
+    <p class="note trnote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>${esc(t.behavioural_note||'')}</p>`;
 }
 function renderComparison(c){   // behavioural attackability delta vs. the previous scan of this target (LSCAN-003/009)
   const dirn=v=>v>0.0005?'worse':(v<-0.0005?'better':'flat');

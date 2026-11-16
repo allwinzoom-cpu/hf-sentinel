@@ -27,6 +27,32 @@ def test_guard_host_resolves_names_and_blocks_rebinding():
         ssrf.guard_host("nxdomain.example", resolver=lambda h, p: [])
 
 
+def test_hosted_guard_pins_validated_addresses_against_connect_time_rebinding(monkeypatch):
+    # TOCTOU/DNS-rebinding defense: once a host is validated in hosted mode, resolution is pinned to exactly the
+    # approved addresses, so the transport's later connect-time lookup can't be rebound to a private IP.
+    import socket as _socket
+    monkeypatch.setenv(ssrf.HOSTED_ENV, "1")
+    ssrf.clear_pins()
+    try:
+        ssrf.guard_host("rebind.example", resolver=lambda h, p: ["8.8.8.8"])   # validated to a global IP → pinned
+        assert _socket.getaddrinfo is ssrf._pinning_getaddrinfo                 # the transport now resolves via the pin
+        entries = ssrf._pinning_getaddrinfo("rebind.example", 443)             # a connect-time lookup for the host...
+        assert [e[4][0] for e in entries] == ["8.8.8.8"]                       # ...returns ONLY the approved address
+        fam, typ, _proto, _canon, sockaddr = entries[0]
+        assert fam == _socket.AF_INET and typ == _socket.SOCK_STREAM and sockaddr == ("8.8.8.8", 443)
+    finally:
+        ssrf.clear_pins()
+        _socket.getaddrinfo = ssrf._ORIG_GETADDRINFO   # restore global state so the pin doesn't leak to other tests
+        ssrf._PATCHED = False
+
+
+def test_guard_does_not_pin_outside_hosted_mode(monkeypatch):
+    monkeypatch.delenv(ssrf.HOSTED_ENV, raising=False)
+    ssrf.clear_pins()
+    ssrf.guard_host("good.example", resolver=GLOBAL)      # a non-hosted (operator) run validates but must NOT pin
+    assert "good.example" not in ssrf._PINS
+
+
 def test_guard_host_blocks_syntactically_private_names_before_dns():
     # LSCAN-008: a bare container name or *.internal/*.local/*.lan name is refused BEFORE any lookup — even a resolver
     # that would (falsely) map it to a global address must not get it reachable.

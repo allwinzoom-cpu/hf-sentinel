@@ -75,11 +75,12 @@ def test_connect_migrates_an_older_findings_table(tmp_path):
     # a store written by a build before the proof columns existed must gain them on connect (ADD COLUMN, non-destructive)
     db = tmp_path / "old.db"
     old = sqlite3.connect(db)
-    old.executescript(
-        "CREATE TABLE scans (run_id TEXT PRIMARY KEY, started TEXT, target_ref TEXT);"
+    old.executescript(store.SCHEMA)          # full current schema for scans/coverage (those tables are unchanged) …
+    old.execute("DROP TABLE findings")       # … but simulate the OLD findings table: no proof columns yet
+    old.execute(
         "CREATE TABLE findings (run_id TEXT, finding_id TEXT, catalog_id TEXT, severity TEXT, asr REAL, "
         "ci_low REAL, ci_high REAL, technique TEXT, evidence_level TEXT, reproducible INTEGER, "
-        "PRIMARY KEY (run_id, finding_id));")
+        "PRIMARY KEY (run_id, finding_id))")
     old.commit()
     old.close()
     conn = store.connect(db)

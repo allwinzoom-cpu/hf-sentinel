@@ -294,6 +294,43 @@ def scan_comparison(db_path: str | Path, run_id: str) -> dict | None:
         conn.close()
 
 
+def scan_trend(db_path: str | Path, target: str, *, limit: int = 20) -> dict:
+    """A target's per-category and overall ASR across its recent scans, ordered oldest→newest for a regression-trend
+    view. Each point carries the scan's run_id/time/grade/confirmed count plus ``category_asr`` and ``overall_asr``
+    computed from the stored coverage rows (the same signal :func:`scan_comparison` diffs pairwise), so the console can
+    chart whether a target is drifting more or less attackable over time without re-running anything.
+
+    This is an *observed behavioural* signal (LSCAN-003): a rising line means later scans elicited more successful
+    attacks on this target reference, never an alignment-removal or training-history claim; and the store does not
+    record the serving path per technique, so points are not asserted to have hit the same route (LSCAN-009). Returns
+    ``{"target_ref", "points": [...], "behavioural_note"}`` with ``points`` empty when the target has no scans."""
+    conn = connect(db_path)
+    try:
+        scans = conn.execute(
+            "SELECT run_id, started, grade, confirmed FROM scans WHERE target_ref=? ORDER BY started DESC LIMIT ?",
+            (target, max(1, limit))).fetchall()
+        points = []
+        for s in reversed(scans):  # oldest→newest so the chart reads left-to-right in time
+            cov = [dict(r) for r in conn.execute(
+                "SELECT catalog_id, category, disposition, asr FROM coverage WHERE run_id=?",
+                (s["run_id"],)).fetchall()]
+            scored = [float(c["asr"]) for c in cov if c.get("disposition") == "run" and c.get("asr") is not None]
+            points.append({
+                "run_id": s["run_id"], "started": s["started"], "grade": s["grade"], "confirmed": s["confirmed"],
+                "category_asr": {k: round(v, 4) for k, v in sorted(_category_asr(cov).items())},
+                "overall_asr": round(sum(scored) / len(scored), 4) if scored else 0.0,
+            })
+        return {
+            "target_ref": target, "points": points,
+            # behavioural only; same serving path is not verified from the store (LSCAN-009)
+            "behavioural_note": "Observed per-scan attack-success rates for this target reference; a trend is an "
+                                "observed behavioural signal, not an alignment or training-history claim, and the "
+                                "serving path is not verified identical across scans.",
+        }
+    finally:
+        conn.close()
+
+
 def prune(db_path: str | Path, *, keep: int = 1000) -> int:
     """Retention: keep only the ``keep`` most recent scans (by ``started``); delete older scans and their coverage +
     findings. Returns how many scans were removed. A long-running service records every scan, so a deployment runs this

@@ -36,6 +36,46 @@ def _resolve(host: str, port: int) -> list[str]:
     return [str(i[4][0]) for i in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
 
 
+# --- DNS-rebinding (TOCTOU) defense -------------------------------------------------------------------------------
+# guard_host validates every resolved address, but the transport (urllib3) resolves the name AGAIN at connect time, so a
+# rebinding attacker could return a global address to the guard and a private one (e.g. 169.254.169.254) to the connect.
+# Fix: pin each validated host to exactly the addresses we approved, and route all later name resolution through them, so
+# the connection can only reach a validated IP. TLS still verifies the certificate against the hostname — we constrain
+# which IP is dialed, nothing else. Pins are only recorded in hosted mode (the only place user URLs are guarded).
+_PINS: dict[str, tuple[str, ...]] = {}
+_ORIG_GETADDRINFO = socket.getaddrinfo
+_PATCHED = False
+
+
+def _pinning_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):  # mirrors the socket.getaddrinfo signature
+    ips = _PINS.get(host) or _PINS.get((host or "").strip("[]"))
+    if ips:
+        out = []
+        for ip in ips:
+            fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+            if family not in (0, socket.AF_UNSPEC, fam):
+                continue
+            sockaddr = (ip, port, 0, 0) if fam == socket.AF_INET6 else (ip, port)
+            out.append((fam, type or socket.SOCK_STREAM, proto, "", sockaddr))
+        if out:
+            return out
+    return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+
+
+def _pin_host(host: str, addrs: list[str]) -> None:
+    """Pin `host` to the just-validated `addrs` and install the pinning resolver (idempotent), closing the rebind window."""
+    global _PATCHED
+    _PINS[host] = tuple(addrs)
+    if not _PATCHED:
+        socket.getaddrinfo = _pinning_getaddrinfo
+        _PATCHED = True
+
+
+def clear_pins() -> None:
+    """Drop all host pins (the installed resolver then falls through to the real one). For tests / between runs."""
+    _PINS.clear()
+
+
 def guard_host(host: str, *, port: int = 443, resolver: Callable[[str, int], list[str]] = _resolve) -> None:
     """Raise SsrfError unless `host` (an IP literal, or a name whose EVERY resolved address) is globally routable."""
     host = (host or "").strip("[]")
@@ -58,6 +98,8 @@ def guard_host(host: str, *, port: int = 443, resolver: Callable[[str, int], lis
     for ip in addrs:
         if not ipaddress.ip_address(ip).is_global:
             raise SsrfError(f"{host} -> {ip}: non-global address (private/loopback/link-local/metadata)")
+    if hosted_mode():  # pin the validated addresses so a later DNS rebind can't swap in a private IP at connect (TOCTOU)
+        _pin_host(host, addrs)
 
 
 def guard_url(url: str, *, resolver: Callable[[str, int], list[str]] = _resolve) -> None:
